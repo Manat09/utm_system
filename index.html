@@ -190,10 +190,11 @@
 
   let noFlyZone = null;
   const noFlyPoints = [];
-  let noFlyMarkers = []; // Массив для хранения маркеров
+  let noFlyMarkers = [];
 
   let routePath = null;
   const routePoints = [];
+  let routeMarkers = []; // Массив для хранения маркеров маршрута
 
   let droneMarker = null;
   let isMonitoring = false;
@@ -210,21 +211,20 @@
       pointDiv.innerHTML = `Точка: [${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}]`;
       document.getElementById('no-fly-points').appendChild(pointDiv);
 
-      // Добавляем маркер
       const marker = L.marker([latlng.lat, latlng.lng], {
         icon: L.divIcon({ className: 'no-fly-marker', html: '<div style="background: red; width: 10px; height: 10px; border-radius: 50%;"></div>' })
       }).addTo(map);
       noFlyMarkers.push(marker);
 
       if (noFlyZone) map.removeLayer(noFlyZone);
-      if (noFlyPoints.length >= 3) { // Полигон требует минимум 3 точки
+      if (noFlyPoints.length >= 3) {
         noFlyZone = L.polygon(noFlyPoints, {
           color: '#ff0000',
           fillColor: '#ff0000',
           fillOpacity: 0.2
         }).addTo(map);
       }
-    } else {
+    } else if (document.getElementById('flight-request-form').classList.contains('active')) {
       // Добавляем точки маршрута
       routePoints.push([latlng.lat, latlng.lng]);
 
@@ -232,6 +232,11 @@
       pointDiv.className = 'route-point';
       pointDiv.innerHTML = `Точка: [${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}]`;
       document.getElementById('route-points').appendChild(pointDiv);
+
+      const marker = L.marker([latlng.lat, latlng.lng], {
+        icon: L.divIcon({ className: 'route-marker', html: '<div style="background: #00c4cc; width: 10px; height: 10px; border-radius: 50%;"></div>' })
+      }).addTo(map);
+      routeMarkers.push(marker);
 
       if (routePath) map.removeLayer(routePath);
       routePath = L.polyline(routePoints, { color: '#00c4cc', weight: 3 }).addTo(map);
@@ -244,6 +249,8 @@
     });
     document.getElementById(formId).classList.add('active');
     routePoints.length = 0;
+    routeMarkers.forEach(marker => map.removeLayer(marker));
+    routeMarkers = [];
     if (routePath) map.removeLayer(routePath);
     document.getElementById('route-points').innerHTML = '<p>Нажмите на карту для добавления точек маршрута.</p>';
   }
