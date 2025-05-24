@@ -175,7 +175,7 @@
     <label>Дата начала: <input type="datetime-local" id="flight-start" required></label>
     <label>Дата окончания: <input type="datetime-local" id="flight-end" required></label>
     <label>Максимальная высота: <input type="number" id="flight-max-altitude" placeholder="м" required></label>
-    <label>Минимальная высота: <input type="number" id="flight-min-altitude" placeholder="м" required></label>
+    <label>Вес дрона: <input type="number" id="drone-weight" placeholder="кг" required></label>
     <label>Модель БВС:
       <select id="drone-model">
         <option value="mini2">Mini 2</option>
@@ -339,7 +339,7 @@
     const start = document.getElementById('flight-start').value;
     const end = document.getElementById('flight-end').value;
     const maxAltitude = document.getElementById('flight-max-altitude').value;
-    const minAltitude = document.getElementById('flight-min-altitude').value;
+    const droneWeight = document.getElementById('drone-weight').value;
     const droneModel = document.getElementById('drone-model').value;
     const directVisibility = document.getElementById('direct-visibility').checked;
 
