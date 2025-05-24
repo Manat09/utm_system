@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title><!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>UTM-система для Казахстана</title>
+  <link rel="stylesheet" href="assets/leaflet/leaflet.css" />
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; background: #1a2526; color: white; }
+    #map { height: 100vh; width: 100%; }
+    .sidebar { 
+      position: absolute; 
+      left: 0; 
+      top: 0; 
+      width: 300px; 
+      background: #1a2526; 
+      padding: 10px; 
+      z-index: 1000; 
+      overflow-y: auto; 
+    }
+    .sidebar h2 { color: #ff4081; }
+    .sidebar ul { list-style: none; padding: 0; }
+    .sidebar li { padding: 10px 0; cursor: pointer; }
+    .sidebar form { display: none; margin-top: 10px; }
+    .sidebar form.active { display: block; }
+    .sidebar input, .sidebar select, .sidebar button { 
+      width: 100%; 
+      margin: 5px 0; 
+      padding: 5px; 
+      background: #2a3637; 
+      color: white; 
+      border: 1px solid #ff4081; 
+    }
+    .sidebar button { background: #ff4081; cursor: pointer; }
+    .top-bar { 
+      position: absolute; 
+      top: 0; 
+      right: 0; 
+      padding: 10px; 
+      z-index: 1000; 
+    }
+    .bottom-bar { 
+      position: absolute; 
+      bottom: 0; 
+      right: 0; 
+      padding: 10px; 
+      z-index: 1000; 
+    }
+    .route-point { margin: 10px 0; }
+  </style>
+</head>
+<body>
+  <div class="sidebar">
+    <h2>UTM-система</h2>
+    <ul>
+      <li onclick="showForm('drone-form')">Регистрация дрона</li>
+      <li onclick="showForm('pilot-form')">Регистрация пилота</li>
+      <li onclick="showForm('flight-request-form')">Подача заявки на полёт</li>
+      <li onclick="startMonitoring()">Мониторинг</li>
+      <li id="alerts">Оповещения: Нет</li>
+    </ul>
+    <form id="drone-form">
+      <h3>Регистрация дрона</h3>
+      <input type="text" id="drone-brand" placeholder="Марка" required>
+      <input type="text" id="drone-model" placeholder="Модель" required>
+      <input type="text" id="drone-serial" placeholder="Серийный номер" required>
+      <button type="button" onclick="registerDrone()">Зарегистрировать</button>
+    </form>
+    <form id="pilot-form">
+      <h3>Регистрация пилота</h3>
+      <input type="text" id="pilot-name" placeholder="ФИО" required>
+      <input type="text" id="pilot-contact" placeholder="Контактные данные" required>
+      <button type="button" onclick="registerPilot()">Зарегистрировать</button>
+    </form>
+    <form id="flight-request-form">
+      <h3>Подача заявки на полёт</h3>
+      <label>Дата начала: <input type="datetime-local" id="flight-start" required></label>
+      <label>Дата окончания: <input type="datetime-local" id="flight-end" required></label>
+      <label>Максимальная высота: <input type="number" id="flight-max-altitude" placeholder="м" required></label>
+      <label>Минимальная высота: <input type="number" id="flight-min-altitude" placeholder="м" required></label>
+      <label>Модель БВС:
+        <select id="drone-model">
+          <option value="mini2">Mini 2</option>
+          <option value="other">Другое</option>
+        </select>
+      </label>
+      <label>Прямая видимость: <input type="checkbox" id="direct-visibility"></label>
+      <div id="route-points">
+        <p>Нажмите на карту для добавления точек маршрута.</p>
+      </div>
+      <button type="button" onclick="submitFlightRequest()">Отправить в полёт</button>
+      <button type="button" onclick="briefing()">Брифинг</button>
+      <p id="request-status">Статус: Ожидание</p>
+    </form>
+  </div>
+  <div class="top-bar" id="weather-bar">
+    <span>Погода: Загрузка...</span>
+  </div>
+  <div class="bottom-bar" id="coords-bar">
+    <span>Координаты: Загрузка...</span>
+  </div>
+  <div id="map"></div>
+
+  <script src="assets/leaflet/leaflet.js"></script>
+  <script>
+    // Инициализация карты (Астана)
+    const map = L.map('map').setView([51.1694, 71.4491], 10);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors',
+      opacity: 0.5
+    }).addTo(map);
+    map.getPane('tilePane').style.filter = 'grayscale(50%) brightness(0.6)';
+
+    // Запретная зона (5 км вокруг центра Астаны)
+    const noFlyZone = L.circle([51.1694, 71.4491], {
+      color: '#ff4081',
+      fillColor: '#ff4081',
+      fillOpacity: 0.2,
+      radius: 5000
+    }).addTo(map);
+
+    // Маршрут
+    let routePath = null;
+    const routePoints = [];
+
+    // Маркер дрона (начальная позиция)
+    let droneMarker = null;
+    let isMonitoring = false;
+
+    // Добавление точки маршрута при клике
+    map.on('click', function(e) {
+      const latlng = e.latlng;
+      routePoints.push([latlng.lat, latlng.lng]);
+
+      // Отображение точки в форме
+      const pointDiv = document.createElement('div');
+      pointDiv.className = 'route-point';
+      pointDiv.innerHTML = `Точка: [${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}]`;
+      document.getElementById('route-points').appendChild(pointDiv);
+
+      // Обновление маршрута на карте
+      if (routePath) map.removeLayer(routePath);
+      routePath = L.polyline(routePoints, { color: '#0000ff', weight: 3 }).addTo(map);
+    });
+
+    // Показ формы
+    function showForm(formId) {
+      document.querySelectorAll('.sidebar form').forEach(form => {
+        form.classList.remove('active');
+      });
+      document.getElementById(formId).classList.add('active');
+      routePoints.length = 0; // Очистка маршрута при открытии формы
+      if (routePath) map.removeLayer(routePath);
+      document.getElementById('route-points').innerHTML = '<p>Нажмите на карту для добавления точек маршрута.</p>';
+    }
+
+    // Регистрация дрона
+    function registerDrone() {
+      const brand = document.getElementById('drone-brand').value;
+      const model = document.getElementById('drone-model').value;
+      const serial = document.getElementById('drone-serial').value;
+      if (brand && model && serial) {
+        alert(`Дрон зарегистрирован: ${brand} ${model}, серийный номер: ${serial}`);
+      } else {
+        alert('Заполните все поля!');
+      }
+    }
+
+    // Регистрация пилота
+    function registerPilot() {
+      const name = document.getElementById('pilot-name').value;
+      const contact = document.getElementById('pilot-contact').value;
+      if (name && contact) {
+        alert(`Пилот зарегистрирован: ${name}, контакт: ${contact}`);
+      } else {
+        alert('Заполните все поля!');
+      }
+    }
+
+    // Подача заявки на полёт
+    function submitFlightRequest() {
+      const start = document.getElementById('flight-start').value;
+      const end = document.getElementById('flight-end').value;
+      const maxAltitude = document.getElementById('flight-max-altitude').value;
+      const minAltitude = document.getElementById('flight-min-altitude').value;
+      const droneModel = document.getElementById('drone-model').value;
+      const directVisibility = document.getElementById('direct-visibility').checked;
+
+      if (routePoints.length < 2) {
+        alert('Добавьте хотя бы две точки маршрута!');
+        return;
+      }
+
+      // Проверка запретной зоны
+      let inNoFlyZone = false;
+      routePoints.forEach(point => {
+        const distance = map.distance(point, [51.1694, 71.4491]);
+        if (distance <= 5000) {
+          inNoFlyZone = true;
+        }
+      });
+
+      const status = inNoFlyZone ? 'отклонено' : 'одобрено';
+      document.getElementById('request-status').textContent = `Статус: ${status}`;
+    }
+
+    // Брифинг
+    function briefing() {
+      alert('Брифинг: Проверка данных перед полётом. Все параметры в норме.');
+    }
+
+    // Эмуляция движения дрона по маршруту
+    function startMonitoring() {
+      if (routePoints.length < 2) {
+        alert('Сначала подайте заявку на полёт с минимум двумя точками!');
+        return;
+      }
+
+      if (document.getElementById('request-status').textContent.includes('отклонено')) {
+        alert('Заявка отклонена, полёт невозможен!');
+        return;
+      }
+
+      if (isMonitoring) return;
+      isMonitoring = true;
+
+      if (droneMarker) map.removeLayer(droneMarker);
+      let currentIndex = 0;
+      droneMarker = L.marker(routePoints[0]).addTo(map)
+        .bindPopup('Дрон: В полёте');
+
+      const moveDrone = () => {
+        if (!isMonitoring || currentIndex >= routePoints.length - 1) {
+          isMonitoring = false;
+          return;
+        }
+
+        currentIndex++;
+        droneMarker.setLatLng(routePoints[currentIndex]);
+
+        // Проверка запретной зоны
+        const distance = map.distance(routePoints[currentIndex], [51.1694, 71.4491]);
+        if (distance <= 5000) {
+          document.getElementById('alerts').textContent = 'Оповещения: Вход в запретную зону!';
+        } else {
+          document.getElementById('alerts').textContent = 'Оповещения: Нет';
+        }
+
+        setTimeout(moveDrone, 2000);
+      };
+
+      moveDrone();
+    }
+
+    // Погода
+    async function fetchWeather() {
+      try {
+        const response = await fetch('https://api.openweathermap.org/data/2.5/weather?lat=51.1694&lon=71.4491&appid=00150018ecbe7940cdd3818ae9c549f4\n&units=metric');
+        const data = await response.json();
+        const temp = data.main.temp;
+        const wind = data.wind.speed;
+        document.getElementById('weather-bar').innerHTML = `Погода: +${temp.toFixed(0)}°C, Ветер: ${wind.toFixed(1)} м/с`;
+      } catch (error) {
+        document.getElementById('weather-bar').innerHTML = 'Погода: Н/Д';
+      }
+    }
+    fetchWeather();
+
+    // Координаты
+    function toDMS(coord, isLat) {
+      const deg = Math.floor(coord);
+      const min = Math.floor((coord - deg) * 60);
+      const sec = ((coord - deg - min / 60) * 3600).toFixed(0);
+      return `${deg}°${min}'${sec}"${isLat ? (coord >= 0 ? 'N' : 'S') : (coord >= 0 ? 'E' : 'W')}`;
+    }
+
+    map.on('move', () => {
+      const center = map.getCenter();
+      const lat = toDMS(center.lat, true);
+      const lng = toDMS(center.lng, false);
+      document.getElementById('coords-bar').innerHTML = `Координаты: ${lat} ${lng}`;
+    });
+  </script>
+</body>
+</html></title>
+</head>
+<body>
+
+</body>
+</html>
