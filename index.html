@@ -21,7 +21,7 @@
       z-index: 1000; 
       overflow-y: auto; 
     }
-    .sidebar h2 { color: #ff4081; }
+    .sidebar h2 { color: #00eaab; }
     .sidebar ul { list-style: none; padding: 0; }
     .sidebar li { padding: 10px 0; cursor: pointer; }
     .sidebar form { display: none; margin-top: 10px; }
@@ -32,9 +32,9 @@
       padding: 5px; 
       background: #2a3637; 
       color: white; 
-      border: 1px solid #ff4081; 
+      border: 1px solid #00eaab;
     }
-    .sidebar button { background: #ff4081; cursor: pointer; }
+    .sidebar button { background: #00eaab; cursor: pointer; }
     .top-bar { 
       position: absolute; 
       top: 0; 
@@ -116,8 +116,8 @@
 
     // Запретная зона (5 км вокруг центра Астаны)
     const noFlyZone = L.circle([51.1694, 71.4491], {
-      color: '#ff4081',
-      fillColor: '#ff4081',
+      color: '#00eaab',
+      fillColor: '#00eaab',
       fillOpacity: 0.2,
       radius: 5000
     }).addTo(map);
