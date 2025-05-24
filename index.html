@@ -12,15 +12,15 @@
       left: 0;
       top: 0;
       width: 300px;
-      height: 100vh; /* Занимает всю высоту */
-      background: linear-gradient(135deg, #1e2a32, #0f1a20); /* Градиентный фон */
+      height: 100vh;
+      background: linear-gradient(135deg, #1e2a32, #0f1a20);
       padding: 20px;
       z-index: 1000;
-      overflow-y: auto; /* Прокрутка при необходимости */
+      overflow-y: auto;
       border-right: 3px solid #00c4cc;
-      box-shadow: 2px 0 10px rgba(0, 0, 0, 0.5); /* Тень для глубины */
-      border-top-right-radius: 15px; /* Закругление правого верхнего угла */
-      border-bottom-right-radius: 15px; /* Закругление правого нижнего угла */
+      box-shadow: 2px 0 10px rgba(0, 0, 0, 0.5);
+      border-top-right-radius: 15px;
+      border-bottom-right-radius: 15px;
     }
     .sidebar h2 {
       color: #00c4cc;
@@ -35,12 +35,12 @@
       padding: 15px 20px;
       cursor: pointer;
       font-size: 16px;
-      transition: all 0.3s ease; /* Плавный переход */
-      border-radius: 8px; /* Закругление элементов */
+      transition: all 0.3s ease;
+      border-radius: 8px;
     }
     .sidebar li:hover {
       background: #2d3a42;
-      transform: translateX(5px); /* Сдвиг при наведении */
+      transform: translateX(5px);
       color: #00c4cc;
     }
     .sidebar form { display: none; margin-top: 20px; }
@@ -83,7 +83,7 @@
       border-radius: 4px;
       box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
     }
-    .route-point { margin: 10px 0; }
+    .route-point, .no-fly-point { margin: 10px 0; }
     .zoom-controls {
       position: absolute;
       top: 50px;
@@ -118,6 +118,7 @@
     <li onclick="showForm('drone-form')">Регистрация дрона</li>
     <li onclick="showForm('pilot-form')">Регистрация пилота</li>
     <li onclick="showForm('flight-request-form')">Подача заявки на полёт</li>
+    <li onclick="showForm('no-fly-zone-form')">Настройка запретной зоны</li>
     <li onclick="startMonitoring()">Мониторинг</li>
     <li id="alerts">Оповещения: Нет</li>
   </ul>
@@ -154,6 +155,13 @@
     <button type="button" onclick="briefing()">Брифинг</button>
     <p id="request-status">Статус: Ожидание</p>
   </form>
+  <form id="no-fly-zone-form">
+    <h3>Настройка запретной зоны</h3>
+    <div id="no-fly-points">
+      <p>Нажмите на карту для добавления точек запретной зоны.</p>
+    </div>
+    <button type="button" onclick="clearNoFlyZone()">Очистить зону</button>
+  </form>
 </div>
 <div class="top-bar" id="weather-bar">
   <span>Погода: Загрузка...</span>
@@ -180,12 +188,9 @@
     opacity: 0.5
   }).addTo(map);
 
-  const noFlyZone = L.circle([51.1694, 71.4491], {
-    color: '#00c4cc',
-    fillColor: '#00c4cc',
-    fillOpacity: 0.2,
-    radius: 5000
-  }).addTo(map);
+  let noFlyZone = null;
+  const noFlyPoints = [];
+  let noFlyMarkers = []; // Массив для хранения маркеров
 
   let routePath = null;
   const routePoints = [];
@@ -195,15 +200,42 @@
 
   map.on('click', function(e) {
     const latlng = e.latlng;
-    routePoints.push([latlng.lat, latlng.lng]);
 
-    const pointDiv = document.createElement('div');
-    pointDiv.className = 'route-point';
-    pointDiv.innerHTML = `Точка: [${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}]`;
-    document.getElementById('route-points').appendChild(pointDiv);
+    // Добавляем точки для запретной зоны, если форма активна
+    if (document.getElementById('no-fly-zone-form').classList.contains('active')) {
+      noFlyPoints.push([latlng.lat, latlng.lng]);
 
-    if (routePath) map.removeLayer(routePath);
-    routePath = L.polyline(routePoints, { color: '#00c4cc', weight: 3 }).addTo(map);
+      const pointDiv = document.createElement('div');
+      pointDiv.className = 'no-fly-point';
+      pointDiv.innerHTML = `Точка: [${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}]`;
+      document.getElementById('no-fly-points').appendChild(pointDiv);
+
+      // Добавляем маркер
+      const marker = L.marker([latlng.lat, latlng.lng], {
+        icon: L.divIcon({ className: 'no-fly-marker', html: '<div style="background: red; width: 10px; height: 10px; border-radius: 50%;"></div>' })
+      }).addTo(map);
+      noFlyMarkers.push(marker);
+
+      if (noFlyZone) map.removeLayer(noFlyZone);
+      if (noFlyPoints.length >= 3) { // Полигон требует минимум 3 точки
+        noFlyZone = L.polygon(noFlyPoints, {
+          color: '#ff0000',
+          fillColor: '#ff0000',
+          fillOpacity: 0.2
+        }).addTo(map);
+      }
+    } else {
+      // Добавляем точки маршрута
+      routePoints.push([latlng.lat, latlng.lng]);
+
+      const pointDiv = document.createElement('div');
+      pointDiv.className = 'route-point';
+      pointDiv.innerHTML = `Точка: [${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}]`;
+      document.getElementById('route-points').appendChild(pointDiv);
+
+      if (routePath) map.removeLayer(routePath);
+      routePath = L.polyline(routePoints, { color: '#00c4cc', weight: 3 }).addTo(map);
+    }
   });
 
   function showForm(formId) {
@@ -251,12 +283,13 @@
     }
 
     let inNoFlyZone = false;
-    routePoints.forEach(point => {
-      const distance = map.distance(point, [51.1694, 71.4491]);
-      if (distance <= 5000) {
-        inNoFlyZone = true;
-      }
-    });
+    if (noFlyZone) {
+      routePoints.forEach(point => {
+        if (isPointInPolygon(point, noFlyPoints)) {
+          inNoFlyZone = true;
+        }
+      });
+    }
 
     const status = inNoFlyZone ? 'отклонено' : 'одобрено';
     document.getElementById('request-status').textContent = `Статус: ${status}`;
@@ -264,6 +297,31 @@
 
   function briefing() {
     alert('Брифинг: Проверка данных перед полётом. Все параметры в норме.');
+  }
+
+  function clearNoFlyZone() {
+    noFlyPoints.length = 0;
+    noFlyMarkers.forEach(marker => map.removeLayer(marker));
+    noFlyMarkers = [];
+    if (noFlyZone) {
+      map.removeLayer(noFlyZone);
+      noFlyZone = null;
+    }
+    document.getElementById('no-fly-points').innerHTML = '<p>Нажмите на карту для добавления точек запретной зоны.</p>';
+  }
+
+  // Проверка, находится ли точка внутри полигона (Ray-casting алгоритм)
+  function isPointInPolygon(point, polygon) {
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const xi = polygon[i][0], yi = polygon[i][1];
+      const xj = polygon[j][0], yj = polygon[j][1];
+      const x = point[0], y = point[1];
+
+      const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
   }
 
   function startMonitoring() {
@@ -294,8 +352,14 @@
       currentIndex++;
       droneMarker.setLatLng(routePoints[currentIndex]);
 
-      const distance = map.distance(routePoints[currentIndex], [51.1694, 71.4491]);
-      if (distance <= 5000) {
+      let inNoFlyZone = false;
+      if (noFlyZone) {
+        if (isPointInPolygon(routePoints[currentIndex], noFlyPoints)) {
+          inNoFlyZone = true;
+        }
+      }
+
+      if (inNoFlyZone) {
         document.getElementById('alerts').textContent = 'Оповещения: Вход в запретную зону!';
       } else {
         document.getElementById('alerts').textContent = 'Оповещения: Нет';
