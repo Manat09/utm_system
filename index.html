@@ -14,46 +14,59 @@
       width: 300px;
       height: 100vh;
       background: linear-gradient(135deg, #1e2a32, #0f1a20);
-      padding: 20px;
+      padding: 15px;
       z-index: 1000;
       overflow-y: auto;
-      border-right: 3px solid #00c4cc;
+      border-right: 2px solid #00c4cc;
       box-shadow: 2px 0 10px rgba(0, 0, 0, 0.5);
-      border-top-right-radius: 15px;
-      border-bottom-right-radius: 15px;
+      border-top-right-radius: 12px;
+      border-bottom-right-radius: 12px;
     }
     .sidebar h2 {
       color: #00c4cc;
-      font-size: 24px;
-      margin-bottom: 20px;
+      font-size: 20px;
+      margin: 0 0 15px 0;
       text-align: center;
       text-transform: uppercase;
-      letter-spacing: 2px;
+      letter-spacing: 1.5px;
     }
     .sidebar ul { list-style: none; padding: 0; }
     .sidebar li {
-      padding: 15px 20px;
+      padding: 12px 15px;
       cursor: pointer;
-      font-size: 16px;
+      font-size: 14px;
       transition: all 0.3s ease;
-      border-radius: 8px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
     }
     .sidebar li:hover {
       background: #2d3a42;
       transform: translateX(5px);
       color: #00c4cc;
     }
-    .sidebar form { display: none; margin-top: 20px; }
+    .sidebar li::before {
+      content: '';
+      margin-right: 10px;
+      font-size: 16px;
+    }
+    .sidebar li:nth-child(1)::before { content: '✈️'; } /* Регистрация дрона */
+    .sidebar li:nth-child(2)::before { content: '👨‍✈️'; } /* Регистрация пилота */
+    .sidebar li:nth-child(3)::before { content: '🛫'; } /* Подача заявки на полёт */
+    .sidebar li:nth-child(4)::before { content: '🚫'; } /* Настройка запретной зоны */
+    .sidebar li:nth-child(5)::before { content: '📡'; } /* Мониторинг */
+    .sidebar li:nth-child(6)::before { content: '🔔'; } /* Оповещения */
+    .sidebar form { display: none; margin-top: 15px; }
     .sidebar form.active { display: block; }
     .sidebar input, .sidebar select, .sidebar button {
       width: 100%;
-      margin: 10px 0;
-      padding: 10px;
+      margin: 8px 0;
+      padding: 8px;
       background: #2d3a42;
       color: #a3e4db;
       border: 1px solid #00c4cc;
-      border-radius: 8px;
-      font-size: 14px;
+      border-radius: 6px;
+      font-size: 12px;
     }
     .sidebar button {
       background: #00c4cc;
@@ -83,7 +96,7 @@
       border-radius: 4px;
       box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
     }
-    .route-point, .no-fly-point { margin: 10px 0; }
+    .route-point, .no-fly-point { margin: 8px 0; }
     .zoom-controls {
       position: absolute;
       top: 50px;
@@ -105,6 +118,28 @@
       box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
     }
     .zoom-controls button:hover {
+      background-color: #00c4cc;
+      color: #0f1a20;
+    }
+    .layer-btn {
+      background-color: #2d3a42;
+      color: #00c4cc;
+      border: 1px solid #00c4cc;
+      border-radius: 4px;
+      width: 30px;
+      height: 30px;
+      font-size: 18px;
+      cursor: pointer;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .layer-btn:hover {
+      background-color: #00c4cc;
+      color: #0f1a20;
+    }
+    .layer-btn.active {
       background-color: #00c4cc;
       color: #0f1a20;
     }
@@ -173,6 +208,9 @@
 <div class="zoom-controls">
   <button onclick="map.zoomIn()">+</button>
   <button onclick="map.zoomOut()">−</button>
+  <button class="layer-btn" id="osm-btn" onclick="changeMapLayer('openstreetmap')" title="OpenStreetMap">🗺️</button>
+  <button class="layer-btn" id="topo-btn" onclick="changeMapLayer('opentopomap')" title="OpenTopoMap">⛰️</button>
+  <button class="layer-btn" id="terrain-btn" onclick="changeMapLayer('stamen-terrain')" title="Stamen Terrain">🌍</button>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -183,10 +221,22 @@
     center: [51.1694, 71.4491]
   });
 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap contributors',
     opacity: 0.5
-  }).addTo(map);
+  });
+
+  const topoLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenTopoMap contributors',
+    opacity: 0.5
+  });
+
+  const terrainLayer = L.tileLayer('https://stamen-tiles-{s}.a.ssl.fastly.net/terrain/{z}/{x}/{y}.png', {
+    attribution: 'Map tiles by <a href="http://stamen.com">Stamen Design</a>, under <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a>. Data by <a href="http://openstreetmap.org">OpenStreetMap</a>, under ODbL.',
+    opacity: 0.5
+  });
+
+  osmLayer.addTo(map);
 
   let noFlyZone = null;
   const noFlyPoints = [];
@@ -194,16 +244,19 @@
 
   let routePath = null;
   const routePoints = [];
-  let routeMarkers = []; // Массив для хранения маркеров маршрута
+  let routeMarkers = [];
 
   let droneMarker = null;
   let isMonitoring = false;
+  let currentLayer = 'openstreetmap';
+
+  document.getElementById('osm-btn').classList.add('active');
 
   map.on('click', function(e) {
     const latlng = e.latlng;
 
-    // Добавляем точки для запретной зоны, если форма активна
-    if (document.getElementById('no-fly-zone-form').classList.contains('active')) {
+    const noFlyForm = document.getElementById('no-fly-zone-form');
+    if (noFlyForm && noFlyForm.classList.contains('active')) {
       noFlyPoints.push([latlng.lat, latlng.lng]);
 
       const pointDiv = document.createElement('div');
@@ -224,35 +277,41 @@
           fillOpacity: 0.2
         }).addTo(map);
       }
-    } else if (document.getElementById('flight-request-form').classList.contains('active')) {
-      // Добавляем точки маршрута
-      routePoints.push([latlng.lat, latlng.lng]);
+    } else {
+      const flightForm = document.getElementById('flight-request-form');
+      if (flightForm && flightForm.classList.contains('active')) {
+        routePoints.push([latlng.lat, latlng.lng]);
 
-      const pointDiv = document.createElement('div');
-      pointDiv.className = 'route-point';
-      pointDiv.innerHTML = `Точка: [${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}]`;
-      document.getElementById('route-points').appendChild(pointDiv);
+        const pointDiv = document.createElement('div');
+        pointDiv.className = 'route-point';
+        pointDiv.innerHTML = `Точка: [${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}]`;
+        document.getElementById('route-points').appendChild(pointDiv);
 
-      const marker = L.marker([latlng.lat, latlng.lng], {
-        icon: L.divIcon({ className: 'route-marker', html: '<div style="background: #00c4cc; width: 10px; height: 10px; border-radius: 50%;"></div>' })
-      }).addTo(map);
-      routeMarkers.push(marker);
+        const marker = L.marker([latlng.lat, latlng.lng], {
+          icon: L.divIcon({ className: 'route-marker', html: '<div style="background: #00c4cc; width: 10px; height: 10px; border-radius: 50%;"></div>' })
+        }).addTo(map);
+        routeMarkers.push(marker);
 
-      if (routePath) map.removeLayer(routePath);
-      routePath = L.polyline(routePoints, { color: '#00c4cc', weight: 3 }).addTo(map);
+        if (routePath) map.removeLayer(routePath);
+        routePath = L.polyline(routePoints, { color: '#00c4cc', weight: 3 }).addTo(map);
+      }
     }
   });
 
   function showForm(formId) {
-    document.querySelectorAll('.sidebar form').forEach(form => {
+    const forms = document.querySelectorAll('.sidebar form');
+    if (!forms) return;
+    forms.forEach(form => {
       form.classList.remove('active');
     });
-    document.getElementById(formId).classList.add('active');
+    const form = document.getElementById(formId);
+    if (form) form.classList.add('active');
     routePoints.length = 0;
     routeMarkers.forEach(marker => map.removeLayer(marker));
     routeMarkers = [];
     if (routePath) map.removeLayer(routePath);
-    document.getElementById('route-points').innerHTML = '<p>Нажмите на карту для добавления точек маршрута.</p>';
+    const routePointsDiv = document.getElementById('route-points');
+    if (routePointsDiv) routePointsDiv.innerHTML = '<p>Нажмите на карту для добавления точек маршрута.</p>';
   }
 
   function registerDrone() {
@@ -314,10 +373,37 @@
       map.removeLayer(noFlyZone);
       noFlyZone = null;
     }
-    document.getElementById('no-fly-points').innerHTML = '<p>Нажмите на карту для добавления точек запретной зоны.</p>';
+    const noFlyPointsDiv = document.getElementById('no-fly-points');
+    if (noFlyPointsDiv) noFlyPointsDiv.innerHTML = '<p>Нажмите на карту для добавления точек запретной зоны.</p>';
   }
 
-  // Проверка, находится ли точка внутри полигона (Ray-casting алгоритм)
+  function changeMapLayer(layer) {
+    if (currentLayer === layer) return;
+
+    const layerButtons = document.querySelectorAll('.layer-btn');
+    if (layerButtons) {
+      layerButtons.forEach(btn => btn.classList.remove('active'));
+    }
+
+    const activeButton = document.getElementById(`${layer}-btn`);
+    if (activeButton) activeButton.classList.add('active');
+
+    map.eachLayer(function (layer) {
+      map.removeLayer(layer);
+    });
+    if (layer === 'openstreetmap') osmLayer.addTo(map);
+    else if (layer === 'opentopomap') topoLayer.addTo(map);
+    else if (layer === 'stamen-terrain') terrainLayer.addTo(map);
+
+    if (noFlyZone) noFlyZone.addTo(map);
+    noFlyMarkers.forEach(marker => marker.addTo(map));
+    if (routePath) routePath.addTo(map);
+    routeMarkers.forEach(marker => marker.addTo(map));
+    if (droneMarker) droneMarker.addTo(map);
+
+    currentLayer = layer;
+  }
+
   function isPointInPolygon(point, polygon) {
     let inside = false;
     for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
