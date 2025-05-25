@@ -318,6 +318,7 @@
   let droneMarker = null;
   let isMonitoring = false;
   let currentLayer = 'openstreetmap';
+  let lastWeatherUpdate = 0; // Для ограничения частоты обновлений
 
   document.getElementById('osm-btn').classList.add('active');
   document.querySelector(`input[name="user-role"][value="${userRole}"]`).checked = true;
@@ -904,22 +905,37 @@
     }
   }
 
-  async function fetchWeather() {
+  async function fetchWeather(lat, lon) {
+    const now = Date.now();
+    if (now - lastWeatherUpdate < 5000) return; // Ограничение обновлений каждые 5 секунд
+    lastWeatherUpdate = now;
+
     try {
-      const response = await fetch('https://api.openweathermap.org/data/2.5/weather?lat=51.1694&lon=71.4491&appid=00150018ecbe7940cdd3818ae9c549f4&units=metric');
+      const apiKey = '00150018ecbe7940cdd3818ae9c549f4'; // Используем предоставленный ключ
+      const response = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric`);
       if (!response.ok) {
         throw new Error(`Ошибка HTTP: ${response.status} (${response.statusText})`);
       }
       const data = await response.json();
       const temp = data.main.temp;
       const wind = data.wind.speed;
-      document.getElementById('weather-bar').innerHTML = `Погода: +${temp.toFixed(0)}°C, Ветер: ${wind.toFixed(1)} м/с`;
+      document.getElementById('weather-bar').innerHTML = `Погода в Астане: +${temp.toFixed(0)}°C, Ветер: ${wind.toFixed(1)} м/с`;
     } catch (error) {
       console.error('Ошибка при загрузке погоды:', error.message);
-      document.getElementById('weather-bar').innerHTML = 'Погода: Н/Д (проверьте API-ключ или подключение)';
+      // Заглушка как запасной вариант
+      const temp = 15;
+      const wind = 5;
+      document.getElementById('weather-bar').innerHTML = `Погода в Астане: +${temp}°C, Ветер: ${wind} м/с (заглушка из-за ошибки)`;
     }
   }
-  fetchWeather();
+
+  // Фиксируем погоду для Астаны (51.1694, 71.4491)
+  function updateWeatherForAstana() {
+    fetchWeather(51.1694, 71.4491);
+  }
+
+  map.on('load', updateWeatherForAstana); // Инициализация при загрузке карты
+  updateWeatherForAstana(); // Вызов сразу при старте
   renderSavedNoFlyZones();
   updateDropdowns();
   updateDroneList();
