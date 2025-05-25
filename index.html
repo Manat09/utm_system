@@ -59,6 +59,7 @@
     .sidebar li:nth-child(7)::before { content: '📋'; } /* Просмотр дронов */
     .sidebar li:nth-child(8)::before { content: '📋'; } /* Просмотр пилотов */
     .sidebar li:nth-child(9)::before { content: '📋'; } /* Просмотр зон */
+    .sidebar li:nth-child(10)::before { content: '📋'; } /* Просмотр сессий */
     .sidebar form { display: none; margin-top: 15px; }
     .sidebar form.active { display: block; }
     .sidebar input, .sidebar select, .sidebar button {
@@ -75,6 +76,8 @@
       background: #00c4cc;
       cursor: pointer;
       transition: background 0.3s ease;
+      width: auto;
+      padding: 5px 10px;
     }
     .sidebar button:hover {
       background: #009ba6;
@@ -82,10 +85,16 @@
     .list-item {
       padding: 8px 10px;
       border-bottom: 1px solid #00c4cc;
-      cursor: default;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
     .list-item:hover {
       background: #2d3a42;
+    }
+    .list-item span {
+      cursor: pointer;
+      flex-grow: 1;
     }
     .top-bar {
       position: absolute;
@@ -170,6 +179,7 @@
     <li onclick="showForm('drone-list')">Просмотр дронов</li>
     <li onclick="showForm('pilot-list')">Просмотр пилотов</li>
     <li onclick="showForm('no-fly-list')">Просмотр зон</li>
+    <li onclick="showForm('flight-session-list')">Просмотр сессий</li>
   </ul>
   <form id="drone-form">
     <h3>Регистрация дрона</h3>
@@ -191,9 +201,13 @@
     <label>Максимальная высота: <input type="number" id="flight-max-altitude" placeholder="м" required></label>
     <label>Вес дрона: <input type="number" id="drone-weight" placeholder="кг" required></label>
     <label>Модель БВС:
-      <select id="drone-model">
-        <option value="mini2">Mini 2</option>
-        <option value="other">Другое</option>
+      <select id="drone-model-select">
+        <option value="">Выберите дрон</option>
+      </select>
+    </label>
+    <label>Пилот:
+      <select id="pilot-select">
+        <option value="">Выберите пилота</option>
       </select>
     </label>
     <label>Прямая видимость: <input type="checkbox" id="direct-visibility"></label>
@@ -224,6 +238,10 @@
     <h3>Сохранённые запретные зоны</h3>
     <div id="no-fly-list-items"></div>
   </form>
+  <form id="flight-session-list">
+    <h3>Полётные сессии</h3>
+    <div id="flight-session-list-items"></div>
+  </form>
 </div>
 <div class="top-bar" id="weather-bar">
   <span>Погода: Загрузка...</span>
@@ -246,7 +264,9 @@
   let drones = JSON.parse(localStorage.getItem('drones')) || [];
   let pilots = JSON.parse(localStorage.getItem('pilots')) || [];
   let noFlyZones = JSON.parse(localStorage.getItem('noFlyZones')) || [];
+  let flightSessions = JSON.parse(localStorage.getItem('flightSessions')) || [];
   let savedNoFlyPolygons = []; // Массив для хранения полигонов на карте
+  let currentRoutePath = null; // Для хранения текущего маршрута сессии
 
   const map = L.map('map', {
     zoomControl: false,
@@ -284,6 +304,121 @@
   let currentLayer = 'openstreetmap';
 
   document.getElementById('osm-btn').classList.add('active');
+
+  // Обновление выпадающих списков дронов и пилотов
+  function updateDropdowns() {
+    const droneSelect = document.getElementById('drone-model-select');
+    const pilotSelect = document.getElementById('pilot-select');
+    droneSelect.innerHTML = '<option value="">Выберите дрон</option>';
+    pilotSelect.innerHTML = '<option value="">Выберите пилота</option>';
+
+    drones.forEach(drone => {
+      const option = document.createElement('option');
+      option.value = drone.serial;
+      option.text = `${drone.brand} ${drone.model} (СН: ${drone.serial})`;
+      droneSelect.appendChild(option);
+    });
+
+    pilots.forEach(pilot => {
+      const option = document.createElement('option');
+      option.value = pilot.contact;
+      option.text = `${pilot.name} (Контакт: ${pilot.contact})`;
+      pilotSelect.appendChild(option);
+    });
+  }
+
+  // Обновление списка дронов с кнопками удаления
+  function updateDroneList() {
+    const list = document.getElementById('drone-list-items');
+    list.innerHTML = '';
+    drones.forEach(drone => {
+      const item = document.createElement('div');
+      item.className = 'list-item';
+      const text = document.createElement('span');
+      text.textContent = `${drone.brand} ${drone.model}, Серийный номер: ${drone.serial}`;
+      const deleteButton = document.createElement('button');
+      deleteButton.textContent = 'Удалить';
+      deleteButton.onclick = () => deleteDrone(drone.serial);
+      item.appendChild(text);
+      item.appendChild(deleteButton);
+      list.appendChild(item);
+    });
+  }
+
+  // Обновление списка пилотов с кнопками удаления
+  function updatePilotList() {
+    const list = document.getElementById('pilot-list-items');
+    list.innerHTML = '';
+    pilots.forEach(pilot => {
+      const item = document.createElement('div');
+      item.className = 'list-item';
+      const text = document.createElement('span');
+      text.textContent = `${pilot.name}, Контакт: ${pilot.contact}`;
+      const deleteButton = document.createElement('button');
+      deleteButton.textContent = 'Удалить';
+      deleteButton.onclick = () => deletePilot(pilot.contact);
+      item.appendChild(text);
+      item.appendChild(deleteButton);
+      list.appendChild(item);
+    });
+  }
+
+  // Обновление списка зон с кнопками удаления
+  function updateNoFlyList() {
+    const list = document.getElementById('no-fly-list-items');
+    list.innerHTML = '';
+    noFlyZones.forEach(zone => {
+      const item = document.createElement('div');
+      item.className = 'list-item';
+      const text = document.createElement('span');
+      text.textContent = `Зона #${zone.id}: ${zone.points.length} точек`;
+      const deleteButton = document.createElement('button');
+      deleteButton.textContent = 'Удалить';
+      deleteButton.onclick = () => deleteNoFlyZone(zone.id);
+      item.appendChild(text);
+      item.appendChild(deleteButton);
+      list.appendChild(item);
+    });
+  }
+
+  // Обновление списка сессий с кнопками удаления и кликабельностью
+  function updateFlightSessionList() {
+    const list = document.getElementById('flight-session-list-items');
+    list.innerHTML = '';
+    flightSessions.forEach(session => {
+      const item = document.createElement('div');
+      item.className = 'list-item';
+      const text = document.createElement('span');
+      text.textContent = `Сессия #${session.flightSessionId}: Дрон: ${session.drone.brand} ${session.drone.model}, Пилот: ${session.pilot.name}, Статус: ${session.status}, Время: ${session.timestamp}`;
+      text.onclick = () => renderSessionRoute(session.flightSessionId);
+      const deleteButton = document.createElement('button');
+      deleteButton.textContent = 'Удалить';
+      deleteButton.onclick = () => deleteFlightSession(session.flightSessionId);
+      item.appendChild(text);
+      item.appendChild(deleteButton);
+      list.appendChild(item);
+    });
+  }
+
+  // Рендеринг маршрута сессии на карте
+  function renderSessionRoute(flightSessionId) {
+    // Удаляем текущий маршрут, если он есть
+    if (currentRoutePath) {
+      map.removeLayer(currentRoutePath);
+      currentRoutePath = null;
+    }
+
+    if (flightSessionId) {
+      const session = flightSessions.find(s => s.flightSessionId === flightSessionId);
+      if (session && session.routePoints && session.routePoints.length > 0) {
+        currentRoutePath = L.polyline(session.routePoints, {
+          color: '#00c4cc',
+          weight: 3
+        }).addTo(map);
+        map.fitBounds(L.latLngBounds(session.routePoints));
+      }
+    }
+  }
 
   // Рендеринг сохранённых зон при загрузке
   function renderSavedNoFlyZones() {
@@ -355,10 +490,19 @@
     if (formId === 'drone-list') updateDroneList();
     if (formId === 'pilot-list') updatePilotList();
     if (formId === 'no-fly-list') updateNoFlyList();
+    if (formId === 'flight-session-list') {
+      updateFlightSessionList();
+      // Не вызываем renderSessionRoute автоматически, так как пользователь сам выберет сессию
+    }
+    if (formId === 'flight-request-form') updateDropdowns();
     routePoints.length = 0;
     routeMarkers.forEach(marker => map.removeLayer(marker));
     routeMarkers = [];
     if (routePath) map.removeLayer(routePath);
+    if (currentRoutePath) {
+      map.removeLayer(currentRoutePath);
+      currentRoutePath = null;
+    }
     const routePointsDiv = document.getElementById('route-points');
     if (routePointsDiv) routePointsDiv.innerHTML = '<p>Нажмите на карту для добавления точек маршрута.</p>';
   }
@@ -375,6 +519,8 @@
       document.getElementById('drone-brand').value = '';
       document.getElementById('drone-model').value = '';
       document.getElementById('drone-serial').value = '';
+      updateDropdowns();
+      updateDroneList();
     } else {
       alert('Заполните все поля!');
     }
@@ -390,6 +536,8 @@
       alert(`Пилот зарегистрирован: ${name}, контакт: ${contact}`);
       document.getElementById('pilot-name').value = '';
       document.getElementById('pilot-contact').value = '';
+      updateDropdowns();
+      updatePilotList();
     } else {
       alert('Заполните все поля!');
     }
@@ -400,11 +548,17 @@
     const end = document.getElementById('flight-end').value;
     const maxAltitude = document.getElementById('flight-max-altitude').value;
     const droneWeight = document.getElementById('drone-weight').value;
-    const droneModel = document.getElementById('drone-model').value;
+    const droneSerial = document.getElementById('drone-model-select').value;
+    const pilotContact = document.getElementById('pilot-select').value;
     const directVisibility = document.getElementById('direct-visibility').checked ? 1 : 0;
 
     if (routePoints.length < 2) {
       alert('Добавьте хотя бы две точки маршрута!');
+      return;
+    }
+
+    if (!droneSerial || !pilotContact) {
+      alert('Выберите дрон и пилота!');
       return;
     }
 
@@ -428,18 +582,42 @@
       });
     });
 
+    const flightSessionId = Date.now().toString();
     const status = inNoFlyZone ? 'отклонено (маршрут пересекает запретную зону)' : 'одобрено';
-    document.getElementById('request-status').textContent = `Статус: ${status}`;
+    const session = {
+      flightSessionId,
+      drone: drones.find(d => d.serial === droneSerial),
+      pilot: pilots.find(p => p.contact === pilotContact),
+      start,
+      end,
+      maxAltitude,
+      droneWeight,
+      directVisibility,
+      routePoints: [...routePoints],
+      status,
+      timestamp: new Date().toISOString()
+    };
+
+    flightSessions.push(session);
+    localStorage.setItem('flightSessions', JSON.stringify(flightSessions));
+    document.getElementById('request-status').textContent = `Статус: ${status} (Сессия #${flightSessionId})`;
     routePoints.length = 0;
     routeMarkers.forEach(marker => map.removeLayer(marker));
     routeMarkers = [];
     if (routePath) map.removeLayer(routePath);
     const routePointsDiv = document.getElementById('route-points');
     if (routePointsDiv) routePointsDiv.innerHTML = '<p>Нажмите на карту для добавления точек маршрута.</p>';
+    updateFlightSessionList();
   }
 
   function briefing() {
-    alert('Брифинг: Проверка данных перед полётом. Все параметры в норме.');
+    const flightSessionId = document.getElementById('drone-model-select').value; // Используем временно для примера
+    const session = flightSessions.find(s => s.flightSessionId === flightSessionId);
+    if (session) {
+      alert(`Брифинг для сессии #${session.flightSessionId}: Проверка данных перед полётом. Дрон: ${session.drone.brand} ${session.drone.model}, Пилот: ${session.pilot.name}, Статус: ${session.status}`);
+    } else {
+      alert('Сначала создайте заявку на полёт!');
+    }
   }
 
   function saveNoFlyZone() {
@@ -447,7 +625,7 @@
       const zone = { points: [...noFlyPoints], id: Date.now() };
       noFlyZones.push(zone);
       localStorage.setItem('noFlyZones', JSON.stringify(noFlyZones));
-      renderSavedNoFlyZones(); // Рендеринг новой зоны на карте
+      renderSavedNoFlyZones();
       updateNoFlyList();
       alert('Запретная зона сохранена!');
       clearNoFlyZone();
@@ -468,39 +646,6 @@
     if (noFlyPointsDiv) noFlyPointsDiv.innerHTML = '<p>Нажмите на карту для добавления точек запретной зоны.</p>';
   }
 
-  function updateDroneList() {
-    const list = document.getElementById('drone-list-items');
-    list.innerHTML = '';
-    drones.forEach(drone => {
-      const item = document.createElement('div');
-      item.className = 'list-item';
-      item.textContent = `${drone.brand} ${drone.model}, Серийный номер: ${drone.serial}`;
-      list.appendChild(item);
-    });
-  }
-
-  function updatePilotList() {
-    const list = document.getElementById('pilot-list-items');
-    list.innerHTML = '';
-    pilots.forEach(pilot => {
-      const item = document.createElement('div');
-      item.className = 'list-item';
-      item.textContent = `${pilot.name}, Контакт: ${pilot.contact}`;
-      list.appendChild(item);
-    });
-  }
-
-  function updateNoFlyList() {
-    const list = document.getElementById('no-fly-list-items');
-    list.innerHTML = '';
-    noFlyZones.forEach(zone => {
-      const item = document.createElement('div');
-      item.className = 'list-item';
-      item.textContent = `Зона #${zone.id}: ${zone.points.length} точек`;
-      list.appendChild(item);
-    });
-  }
-
   function changeMapLayer(layer) {
     if (currentLayer === layer) return;
 
@@ -513,7 +658,6 @@
     if (activeButton) activeButton.classList.add('active');
 
     map.eachLayer(function (layer) {
-      // Удаляем только слои карты (TileLayer), оставляя маркеры, полигоны и линии
       if (layer instanceof L.TileLayer) {
         map.removeLayer(layer);
       }
@@ -523,13 +667,13 @@
     else if (layer === 'opentopomap') topoLayer.addTo(map);
     else if (layer === 'stamen-terrain') terrainLayer.addTo(map);
 
-    // Добавление сохранённых зон на новый слой
     renderSavedNoFlyZones();
     if (noFlyZone) noFlyZone.addTo(map);
     noFlyMarkers.forEach(marker => marker.addTo(map));
     if (routePath) routePath.addTo(map);
     routeMarkers.forEach(marker => marker.addTo(map));
     if (droneMarker) droneMarker.addTo(map);
+    if (currentRoutePath) currentRoutePath.addTo(map);
 
     currentLayer = layer;
   }
@@ -553,8 +697,9 @@
       return;
     }
 
-    if (document.getElementById('request-status').textContent.includes('отклонено')) {
-      alert('Заявка отклонена, полёт невозможен!');
+    const session = flightSessions.find(s => s.routePoints.length === routePoints.length && s.routePoints.every((p, i) => p[0] === routePoints[i][0] && p[1] === routePoints[i][1]));
+    if (!session || session.status.includes('отклонено')) {
+      alert('Заявка отклонена или не найдена, полёт невозможен!');
       return;
     }
 
@@ -564,7 +709,7 @@
     if (droneMarker) map.removeLayer(droneMarker);
     let currentIndex = 0;
     droneMarker = L.marker(routePoints[0]).addTo(map)
-            .bindPopup('Дрон: В полёте');
+            .bindPopup(`Дрон: В полёте (Сессия #${session.flightSessionId})`);
 
     const moveDrone = () => {
       if (!isMonitoring || currentIndex >= routePoints.length - 1) {
@@ -599,6 +744,50 @@
     moveDrone();
   }
 
+  function deleteDrone(serial) {
+    if (confirm(`Удалить дрон с серийным номером ${serial}?`)) {
+      drones = drones.filter(d => d.serial !== serial);
+      localStorage.setItem('drones', JSON.stringify(drones));
+      updateDroneList();
+      updateDropdowns();
+      alert(`Дрон с серийным номером ${serial} удалён`);
+    }
+  }
+
+  function deletePilot(contact) {
+    if (confirm(`Удалить пилота с контактом ${contact}?`)) {
+      pilots = pilots.filter(p => p.contact !== contact);
+      localStorage.setItem('pilots', JSON.stringify(pilots));
+      updatePilotList();
+      updateDropdowns();
+      alert(`Пилот с контактом ${contact} удалён`);
+    }
+  }
+
+  function deleteNoFlyZone(id) {
+    if (confirm(`Удалить запретную зону #${id}?`)) {
+      noFlyZones = noFlyZones.filter(z => z.id !== id);
+      savedNoFlyPolygons = savedNoFlyPolygons.filter(p => p.options.id !== id);
+      localStorage.setItem('noFlyZones', JSON.stringify(noFlyZones));
+      renderSavedNoFlyZones();
+      updateNoFlyList();
+      alert(`Запретная зона #${id} удалена`);
+    }
+  }
+
+  function deleteFlightSession(id) {
+    if (confirm(`Удалить сессию #${id}?`)) {
+      flightSessions = flightSessions.filter(s => s.flightSessionId !== id);
+      localStorage.setItem('flightSessions', JSON.stringify(flightSessions));
+      if (currentRoutePath) {
+        map.removeLayer(currentRoutePath);
+        currentRoutePath = null;
+      }
+      updateFlightSessionList();
+      alert(`Сессия #${id} удалена`);
+    }
+  }
+
   async function fetchWeather() {
     try {
       const response = await fetch('https://api.openweathermap.org/data/2.5/weather?lat=51.1694&lon=71.4491&appid=00150018ecbe7940cdd3818ae9c549f4&units=metric');
@@ -615,7 +804,12 @@
     }
   }
   fetchWeather();
-  renderSavedNoFlyZones(); // Рендеринг зон при загрузке
+  renderSavedNoFlyZones();
+  updateDropdowns();
+  updateDroneList();
+  updatePilotList();
+  updateNoFlyList();
+  updateFlightSessionList();
 
   function toDMS(coord, isLat) {
     const deg = Math.floor(coord);
