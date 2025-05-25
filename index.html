@@ -608,11 +608,13 @@
   // Функция для получения данных от Netlify Function
   async function fetchDroneData(droneId) {
     try {
+      console.log(`Запрос данных для droneId: ${droneId}`);
       const response = await fetch(`https://clever-sunshine-3ad9d8.netlify.app/api/drone-data?drone_id=${droneId}`);
       if (!response.ok) {
         throw new Error(`Ошибка HTTP: ${response.status}`);
       }
       const data = await response.json();
+      console.log('Получены данные:', data);
       return data;
     } catch (error) {
       console.error('Ошибка получения данных:', error.message);
@@ -647,6 +649,8 @@
       const data = await fetchDroneData(droneIdToMonitor);
       if (data && data.lat && data.lon) {
         updateDronePosition(droneIdToMonitor, data.lat, data.lon);
+      } else {
+        console.log('Данные не получены или некорректны');
       }
     }, 5000);
   }
@@ -1352,6 +1356,8 @@
       console.error("Неверные координаты:", lat, lon);
       return;
     }
+
+    console.log(`Обновление позиции дрона ${droneId}: lat=${latitude}, lon=${longitude}`);
 
     document.getElementById('drone-id').textContent = `ID: ${droneId}`;
     document.getElementById('latitude').textContent = `Широта: ${latitude.toFixed(6)}`;
