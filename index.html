@@ -353,8 +353,8 @@
     .drone-icon {
       transform: rotate(0deg);
       transition: transform 0.5s ease;
-      font-size: 40px; /* Ещё уменьшенный размер эмодзи */
-      text-shadow: 0 0 10px rgba(0, 212, 204, 0.7); /* Полупрозрачное свечение */
+      font-size: 40px;
+      text-shadow: 0 0 10px rgba(0, 212, 204, 0.7);
     }
     .flight-control-panel {
       background: linear-gradient(135deg, #1a2e44, #2d4a66);
@@ -591,20 +591,78 @@
   let circleCenter = null;
   let circleOverlay = null;
 
-  let droneMarker = null;
+  let droneMarkers = {};
   let isMonitoring = false;
   let currentLayer = 'openstreetmap';
   let lastWeatherUpdate = 0;
 
   document.getElementById('osm-btn').classList.add('active');
 
-  // Кастомная иконка самолёта с ещё меньшим размером
   const droneIcon = L.divIcon({
     className: 'drone-icon',
     html: '✈️',
-    iconSize: [40, 40], // Ещё уменьшенный размер
-    iconAnchor: [20, 20] // Скорректированный центр
+    iconSize: [40, 40],
+    iconAnchor: [20, 20]
   });
+
+  // Функция для получения данных от Netlify Function
+  async function fetchDroneData(droneId) {
+    try {
+      const response = await fetch(`https://clever-sunshine-3ad9d8.netlify.app/api/drone-data?drone_id=${droneId}`);
+      if (!response.ok) {
+        throw new Error(`Ошибка HTTP: ${response.status}`);
+      }
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Ошибка получения данных:', error.message);
+      return null;
+    }
+  }
+
+  // Периодическое обновление данных
+  let monitoringInterval = null;
+  const droneIdToMonitor = 'DRONE-001';
+
+  function startMonitoring() {
+    if (isMonitoring) return;
+    const sessionId = document.getElementById('session-select').value;
+    if (!sessionId) {
+      alert('Выберите сессию!');
+      return;
+    }
+
+    const session = flightSessions.find(s => s.flightSessionId === sessionId);
+    if (!session || session.status !== 'одобрено') {
+      alert('Сессия не найдена или не одобрена!');
+      return;
+    }
+
+    isMonitoring = true;
+    document.getElementById('start-btn').disabled = true;
+    document.getElementById('stop-btn').disabled = false;
+    document.getElementById('flight-status').textContent = 'Статус: В полёте';
+
+    monitoringInterval = setInterval(async () => {
+      const data = await fetchDroneData(droneIdToMonitor);
+      if (data && data.lat && data.lon) {
+        updateDronePosition(droneIdToMonitor, data.lat, data.lon);
+      }
+    }, 5000);
+  }
+
+  function stopMonitoring() {
+    if (!isMonitoring) return;
+    isMonitoring = false;
+    document.getElementById('start-btn').disabled = false;
+    document.getElementById('stop-btn').disabled = true;
+    document.getElementById('flight-status').textContent = 'Статус: Остановлен';
+
+    if (monitoringInterval) {
+      clearInterval(monitoringInterval);
+      monitoringInterval = null;
+    }
+  }
 
   function setRole(role) {
     userRole = role;
@@ -739,7 +797,7 @@
       item.appendChild(deleteButton);
       list.appendChild(item);
     });
-    updateDropdowns(); // Обновляем список сессий в форме запуска
+    updateDropdowns();
   }
 
   function renderSessionRoute(flightSessionId) {
@@ -1142,7 +1200,9 @@
     if (routePath) routePath.addTo(map);
     if (circleOverlay) circleOverlay.addTo(map);
     routeMarkers.forEach(marker => marker.addTo(map));
-    if (droneMarker) droneMarker.addTo(map);
+    for (let droneId in droneMarkers) {
+      if (droneMarkers[droneId]) droneMarkers[droneId].addTo(map);
+    }
     if (currentRoutePath) currentRoutePath.addTo(map);
     savedRoutes.forEach(route => route.polyline.addTo(map));
 
@@ -1162,7 +1222,6 @@
     return inside;
   }
 
-  // Функция для интерполяции между двумя точками
   function interpolatePoints(start, end, steps) {
     const interpolatedPoints = [];
     const latStep = (end[0] - start[0]) / steps;
@@ -1174,102 +1233,6 @@
       interpolatedPoints.push([lat, lng]);
     }
     return interpolatedPoints;
-  }
-
-  function startMonitoring() {
-    if (isMonitoring) return;
-    const sessionId = document.getElementById('session-select').value;
-    if (!sessionId) {
-      alert('Выберите сессию!');
-      return;
-    }
-
-    const session = flightSessions.find(s => s.flightSessionId === sessionId);
-    if (!session || session.status !== 'одобрено') {
-      alert('Сессия не найдена или не одобрена!');
-      return;
-    }
-
-    isMonitoring = true;
-    document.getElementById('start-btn').disabled = true;
-    document.getElementById('stop-btn').disabled = false;
-    document.getElementById('flight-status').textContent = 'Статус: В полёте';
-
-    if (droneMarker) map.removeLayer(droneMarker);
-    let currentSegment = 0;
-    const routePoints = session.routePoints;
-    const stepsPerSegment = 20; // Количество промежуточных шагов между двумя точками
-    const stepDelay = 100; // Задержка между шагами (в миллисекундах)
-
-    droneMarker = L.marker(routePoints[0], { icon: droneIcon }).addTo(map)
-            .bindPopup(`Дрон: В полёте (Сессия #${session.flightSessionId})`);
-
-    const moveDrone = () => {
-      if (!isMonitoring || currentSegment >= routePoints.length - 1) {
-        stopMonitoring();
-        return;
-      }
-
-      const startPoint = routePoints[currentSegment];
-      const endPoint = routePoints[currentSegment + 1];
-      const interpolatedPoints = interpolatePoints(startPoint, endPoint, stepsPerSegment);
-      let stepIndex = 0;
-
-      const moveStep = () => {
-        if (!isMonitoring || stepIndex >= interpolatedPoints.length) {
-          currentSegment++;
-          moveDrone();
-          return;
-        }
-
-        const currentLatLng = L.latLng(interpolatedPoints[stepIndex]);
-        const nextLatLng = stepIndex + 1 < interpolatedPoints.length
-                ? L.latLng(interpolatedPoints[stepIndex + 1])
-                : currentLatLng;
-
-        const angle = Math.atan2(nextLatLng.lng - currentLatLng.lng, nextLatLng.lat - currentLatLng.lat) * 180 / Math.PI + 90;
-        droneMarker.getElement().style.transform = `rotate(${angle}deg)`;
-
-        droneMarker.setLatLng(currentLatLng);
-
-        let inNoFlyZone = false;
-        if (noFlyZone) {
-          if (isPointInPolygon([currentLatLng.lat, currentLatLng.lng], noFlyPoints)) {
-            inNoFlyZone = true;
-          }
-        }
-        noFlyZones.forEach(zone => {
-          if (isPointInPolygon([currentLatLng.lat, currentLatLng.lng], zone.points)) {
-            inNoFlyZone = true;
-          }
-        });
-
-        if (inNoFlyZone) {
-          document.getElementById('alerts').textContent = 'Оповещения: Вход в запретную зону!';
-        } else {
-          document.getElementById('alerts').textContent = 'Оповещения: Нет';
-        }
-
-        stepIndex++;
-        setTimeout(moveStep, stepDelay);
-      };
-
-      moveStep();
-    };
-
-    moveDrone();
-  }
-
-  function stopMonitoring() {
-    if (!isMonitoring) return;
-    isMonitoring = false;
-    document.getElementById('start-btn').disabled = false;
-    document.getElementById('stop-btn').disabled = true;
-    document.getElementById('flight-status').textContent = 'Статус: Остановлен';
-    if (droneMarker) {
-      map.removeLayer(droneMarker);
-      droneMarker = null;
-    }
   }
 
   function deleteDrone(serial) {
@@ -1381,24 +1344,6 @@
     document.getElementById('coords-bar').innerHTML = `Координаты: ${lat} ${lng}`;
   });
 
-  // Объект для хранения позиций дронов
-  let dronePositions = JSON.parse(localStorage.getItem('dronePositions')) || {};
-  let dronePaths = {};
-
-  // Инициализация маркеров и маршрутов при загрузке
-  function initDronePositions() {
-    for (let droneId in dronePositions) {
-      const positions = dronePositions[droneId];
-      if (positions.length > 0) {
-        const lastPos = positions[positions.length - 1];
-        const marker = L.marker([lastPos.lat, lastPos.lon], { icon: droneIcon }).addTo(map)
-                .bindPopup(`Дрон: ${droneId}`);
-        dronePaths[droneId] = { marker, path: L.polyline(positions.map(p => [p.lat, p.lon]), { color: '#00d4cc', weight: 3 }).addTo(map) };
-      }
-    }
-  }
-
-  // Обновление позиции дрона и данных в ячейках
   function updateDronePosition(droneId, lat, lon) {
     const latitude = parseFloat(lat);
     const longitude = parseFloat(lon);
@@ -1408,57 +1353,36 @@
       return;
     }
 
-    // Обновляем ячейки данными
     document.getElementById('drone-id').textContent = `ID: ${droneId}`;
     document.getElementById('latitude').textContent = `Широта: ${latitude.toFixed(6)}`;
     document.getElementById('longitude').textContent = `Долгота: ${longitude.toFixed(6)}`;
 
-    // Добавляем новую позицию в массив
-    if (!dronePositions[droneId]) {
-      dronePositions[droneId] = [];
-    }
-    dronePositions[droneId].push({ lat: latitude, lon: longitude });
-
-    // Сохраняем в localStorage
-    localStorage.setItem('dronePositions', JSON.stringify(dronePositions));
-
-    // Обновляем маркер и путь
-    if (dronePaths[droneId]) {
-      const { marker, path } = dronePaths[droneId];
-      marker.setLatLng([latitude, longitude]);
-      path.setLatLngs(dronePositions[droneId].map(p => [p.lat, p.lon]));
+    if (droneMarkers[droneId]) {
+      droneMarkers[droneId].setLatLng([latitude, longitude]);
     } else {
-      const marker = L.marker([latitude, longitude], { icon: droneIcon }).addTo(map)
-              .bindPopup(`Дрон: ${droneId}`);
-      const path = L.polyline([[latitude, longitude]], { color: '#00d4cc', weight: 3 }).addTo(map);
-      dronePaths[droneId] = { marker, path };
+      droneMarkers[droneId] = L.marker([latitude, longitude], { icon: droneIcon })
+              .bindPopup(`Дрон: ${droneId}`)
+              .addTo(map);
     }
 
-    // Центрируем карту на последней позиции
+    let inNoFlyZone = false;
+    if (noFlyZone && isPointInPolygon([latitude, longitude], noFlyPoints)) {
+      inNoFlyZone = true;
+    }
+    noFlyZones.forEach(zone => {
+      if (isPointInPolygon([latitude, longitude], zone.points)) {
+        inNoFlyZone = true;
+      }
+    });
+
+    if (inNoFlyZone) {
+      document.getElementById('alerts').textContent = 'Оповещения: Вход в запретную зону!';
+    } else {
+      document.getElementById('alerts').textContent = 'Оповещения: Нет';
+    }
+
     map.setView([latitude, longitude], 13);
   }
-
-  // Получение параметров из URL
-  function getQueryParams() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const droneId = urlParams.get('droneId');
-    const lat = urlParams.get('lat');
-    const lon = urlParams.get('lon');
-
-    if (droneId && lat && lon) {
-      updateDronePosition(droneId, lat, lon);
-      // Очистка URL после обработки
-      window.history.pushState({}, document.title, window.location.pathname);
-    } else if (droneId || lat || lon) {
-      console.warn("Недостаточно данных в запросе:", { droneId, lat, lon });
-    }
-  }
-
-  // Инициализация при загрузке
-  initDronePositions();
-
-  // Проверка новых данных каждые 5 секунд
-  setInterval(getQueryParams, 5000);
 </script>
 </body>
 </html>

@@ -1,0 +1,9 @@
+[build]
+  command = "echo 'No build command required'"
+  publish = "."
+  functions = "functions"
+
+[[redirects]]
+  from = "/api/drone-data"
+  to = "/.netlify/functions/drone-data"
+  status = 200
