@@ -163,12 +163,18 @@
       background-color: #00c4cc;
       color: #0f1a20;
     }
+    .role-switch { margin: 10px 0; }
     .leaflet-pane { filter: grayscale(30%) brightness(0.7) hue-rotate(180deg); }
   </style>
 </head>
 <body>
 <div class="sidebar">
   <h2>UTM-система</h2>
+  <div class="role-switch">
+    <label>Роль: </label>
+    <label><input type="radio" name="user-role" value="user" checked onclick="setRole('user')"> Пользователь</label>
+    <label><input type="radio" name="user-role" value="admin" onclick="setRole('admin')"> Админ</label>
+  </div>
   <ul>
     <li onclick="showForm('drone-form')">Регистрация дрона</li>
     <li onclick="showForm('pilot-form')">Регистрация пилота</li>
@@ -274,6 +280,7 @@
   let flightSessions = JSON.parse(localStorage.getItem('flightSessions')) || [];
   let savedNoFlyPolygons = []; // Массив для хранения полигонов на карте
   let currentRoutePath = null; // Для хранения текущего маршрута сессии
+  let userRole = localStorage.getItem('userRole') || 'user'; // Роль по умолчанию
 
   const map = L.map('map', {
     zoomControl: false,
@@ -313,6 +320,13 @@
   let currentLayer = 'openstreetmap';
 
   document.getElementById('osm-btn').classList.add('active');
+  document.querySelector(`input[name="user-role"][value="${userRole}"]`).checked = true;
+
+  // Установка роли пользователя
+  function setRole(role) {
+    userRole = role;
+    localStorage.setItem('userRole', role);
+  }
 
   // Обновление выпадающих списков дронов и пилотов
   function updateDropdowns() {
@@ -566,7 +580,13 @@
       form.classList.remove('active');
     });
     const form = document.getElementById(formId);
-    if (form) form.classList.add('active');
+    if (form) {
+      if (formId === 'no-fly-zone-form' && userRole !== 'admin') {
+        alert('Эта функция доступна только администраторам!');
+        return; // Не показываем форму для неадминов
+      }
+      form.classList.add('active');
+    }
     if (formId === 'drone-list') updateDroneList();
     if (formId === 'pilot-list') updatePilotList();
     if (formId === 'no-fly-list') updateNoFlyList();
@@ -888,15 +908,15 @@
     try {
       const response = await fetch('https://api.openweathermap.org/data/2.5/weather?lat=51.1694&lon=71.4491&appid=00150018ecbe7940cdd3818ae9c549f4&units=metric');
       if (!response.ok) {
-        throw new Error('Ошибка при загрузке погоды: ' + response.statusText);
+        throw new Error(`Ошибка HTTP: ${response.status} (${response.statusText})`);
       }
       const data = await response.json();
       const temp = data.main.temp;
       const wind = data.wind.speed;
       document.getElementById('weather-bar').innerHTML = `Погода: +${temp.toFixed(0)}°C, Ветер: ${wind.toFixed(1)} м/с`;
     } catch (error) {
-      console.error('Ошибка при загрузке погоды:', error);
-      document.getElementById('weather-bar').innerHTML = 'Погода: Н/Д';
+      console.error('Ошибка при загрузке погоды:', error.message);
+      document.getElementById('weather-bar').innerHTML = 'Погода: Н/Д (проверьте API-ключ или подключение)';
     }
   }
   fetchWeather();
