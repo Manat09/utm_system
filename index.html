@@ -5,256 +5,399 @@
   <title>UTM-система для Казахстана</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
-    body { margin: 0; font-family: Arial, sans-serif; background: #0f1a20; color: #a3e4db; }
-    #map { height: 100vh; width: 100%; }
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #0d1b26, #1a2e44);
+      color: #e0f7fa;
+      overflow: hidden;
+    }
+    #map {
+      height: 100vh;
+      width: 100%;
+      transition: filter 0.3s ease;
+    }
     .sidebar {
       position: absolute;
       left: 0;
       top: 0;
-      width: 300px;
+      width: 320px;
       height: 100vh;
-      background: linear-gradient(135deg, #1e2a32, #0f1a20);
-      padding: 15px;
+      background: linear-gradient(160deg, #1a2e44, #0d1b26);
+      padding: 20px;
       z-index: 1000;
       overflow-y: auto;
-      border-right: 2px solid #00c4cc;
-      box-shadow: 2px 0 10px rgba(0, 0, 0, 0.5);
-      border-top-right-radius: 12px;
-      border-bottom-right-radius: 12px;
+      border-right: 3px solid #00d4cc;
+      box-shadow: 4px 0 15px rgba(0, 0, 0, 0.6);
+      border-top-right-radius: 15px;
+      border-bottom-right-radius: 15px;
+      animation: slideIn 0.5s ease-out;
+    }
+    @keyframes slideIn {
+      from { transform: translateX(-100%); }
+      to { transform: translateX(0); }
     }
     .sidebar h2 {
-      color: #00c4cc;
-      font-size: 20px;
-      margin: 0 0 15px 0;
+      color: #00d4cc;
+      font-size: 24px;
+      margin: 0 0 20px 0;
       text-align: center;
       text-transform: uppercase;
-      letter-spacing: 1.5px;
+      letter-spacing: 2px;
+      font-weight: 600;
     }
-    .sidebar ul { list-style: none; padding: 0; }
+    .sidebar ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
     .sidebar li {
-      padding: 12px 15px;
-      cursor: pointer;
-      font-size: 14px;
-      transition: all 0.3s ease;
-      border-radius: 6px;
       display: flex;
       align-items: center;
-    }
-    .sidebar li:hover {
-      background: #2d3a42;
-      transform: translateX(5px);
-      color: #00c4cc;
-    }
-    .sidebar li::before {
-      content: '';
-      margin-right: 10px;
+      flex-direction: column;
+      color: #a3e4db;
       font-size: 16px;
     }
-    .sidebar li:nth-child(1)::before { content: '✈️'; } /* Регистрация дрона */
-    .sidebar li:nth-child(2)::before { content: '👨‍✈️'; } /* Регистрация пилота */
-    .sidebar li:nth-child(3)::before { content: '🛫'; } /* Подача заявки на полёт */
-    .sidebar li:nth-child(4)::before { content: '🚫'; } /* Настройка запретной зоны */
-    .sidebar li:nth-child(5)::before { content: '📡'; } /* Мониторинг */
-    .sidebar li:nth-child(6)::before { content: '🔔'; } /* Оповещения */
-    .sidebar li:nth-child(7)::before { content: '📋'; } /* Просмотр дронов */
-    .sidebar li:nth-child(8)::before { content: '📋'; } /* Просмотр пилотов */
-    .sidebar li:nth-child(9)::before { content: '📋'; } /* Просмотр зон */
-    .sidebar li:nth-child(10)::before { content: '📋'; } /* Просмотр сессий */
-    .sidebar form { display: none; margin-top: 15px; }
-    .sidebar form.active { display: block; }
+    .menu-label {
+      display: flex;
+      align-items: center;
+      padding: 15px 20px;
+      cursor: pointer;
+      width: 100%;
+      border-radius: 8px;
+      transition: all 0.3s ease;
+    }
+    .menu-label:hover {
+      background: #2d4a66;
+      transform: translateX(10px);
+      color: #fff;
+    }
+    .menu-label::before {
+      content: '';
+      margin-right: 12px;
+      font-size: 18px;
+      transition: transform 0.3s ease;
+    }
+    .menu-label:hover::before {
+      transform: scale(1.2);
+    }
+    .sidebar li:nth-child(1) .menu-label::before { content: '✈️'; }
+    .sidebar li:nth-child(2) .menu-label::before { content: '👨‍✈️'; }
+    .sidebar li:nth-child(3) .menu-label::before { content: '🛫'; }
+    .sidebar li:nth-child(4) .menu-label::before { content: '🚫'; }
+    .sidebar li:nth-child(5) .menu-label::before { content: '📡'; }
+    .sidebar li:nth-child(6) .menu-label::before { content: '🔔'; }
+    .sidebar li:nth-child(7) .menu-label::before { content: '📋'; }
+    .sidebar li:nth-child(8) .menu-label::before { content: '📋'; }
+    .sidebar li:nth-child(9) .menu-label::before { content: '📋'; }
+    .sidebar li:nth-child(10) .menu-label::before { content: '📋'; }
+    .sidebar form {
+      display: none;
+      margin-top: 10px;
+      padding: 10px;
+      background: #2d4a66;
+      border-radius: 8px;
+      animation: fadeIn 0.3s ease-in;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    .sidebar form.active {
+      display: block;
+    }
     .sidebar input, .sidebar select, .sidebar button {
       width: 100%;
-      margin: 8px 0;
-      padding: 8px;
-      background: #2d3a42;
-      color: #a3e4db;
-      border: 1px solid #00c4cc;
-      border-radius: 6px;
-      font-size: 12px;
+      margin: 10px 0;
+      padding: 10px;
+      background: #1a2e44;
+      color: #e0f7fa;
+      border: 2px solid #00d4cc;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: all 0.3s ease;
+    }
+    .sidebar input:focus, .sidebar select:focus {
+      border-color: #00a8a0;
+      outline: none;
+      background: #3d5f7d;
     }
     .sidebar button {
-      background: #00c4cc;
+      background: #00d4cc;
       cursor: pointer;
-      transition: background 0.3s ease;
+      transition: background 0.3s ease, transform 0.2s ease;
       width: auto;
-      padding: 5px 10px;
+      padding: 8px 15px;
+      font-weight: 500;
     }
     .sidebar button:hover {
-      background: #009ba6;
+      background: #00a8a0;
+      transform: scale(1.05);
     }
     .list-item {
-      padding: 8px 10px;
-      border-bottom: 1px solid #00c4cc;
+      padding: 10px 15px;
+      border-bottom: 1px solid #00d4cc;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      transition: background 0.3s ease;
     }
     .list-item:hover {
-      background: #2d3a42;
+      background: #3d5f7d;
     }
     .list-item span {
       cursor: pointer;
       flex-grow: 1;
+      transition: color 0.3s ease;
+    }
+    .list-item span:hover {
+      color: #00d4cc;
     }
     .top-bar {
       position: absolute;
-      top: 0;
-      right: 0;
-      padding: 10px;
+      top: 10px;
+      right: 10px;
+      padding: 12px 20px;
       z-index: 1000;
-      background: #1e2a32;
-      border-radius: 4px;
-      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+      background: rgba(26, 46, 68, 0.9);
+      border-radius: 10px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(5px);
+      transition: transform 0.3s ease;
+    }
+    .top-bar:hover {
+      transform: scale(1.05);
     }
     .bottom-bar {
       position: absolute;
-      bottom: 0;
-      right: 0;
-      padding: 10px;
+      bottom: 10px;
+      right: 10px;
+      padding: 12px 20px;
       z-index: 1000;
-      background: #1e2a32;
-      border-radius: 4px;
-      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+      background: rgba(26, 46, 68, 0.9);
+      border-radius: 10px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(5px);
+      transition: transform 0.3s ease;
     }
-    .route-point, .no-fly-point { margin: 8px 0; }
+    .bottom-bar:hover {
+      transform: scale(1.05);
+    }
+    .route-point, .no-fly-point { margin: 10px 0; }
     .zoom-controls {
       position: absolute;
-      top: 50px;
+      top: 60px;
       right: 10px;
       z-index: 1000;
       display: flex;
       flex-direction: column;
-      gap: 5px;
+      gap: 8px;
     }
     .zoom-controls button {
-      background-color: #2d3a42;
-      color: #00c4cc;
-      border: 1px solid #00c4cc;
-      border-radius: 4px;
-      width: 30px;
-      height: 30px;
-      font-size: 18px;
+      background-color: #2d4a66;
+      color: #00d4cc;
+      border: 2px solid #00d4cc;
+      border-radius: 6px;
+      width: 40px;
+      height: 40px;
+      font-size: 20px;
       cursor: pointer;
-      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+      transition: all 0.3s ease;
     }
     .zoom-controls button:hover {
-      background-color: #00c4cc;
-      color: #0f1a20;
+      background-color: #00d4cc;
+      color: #1a2e44;
+      transform: scale(1.1);
     }
     .layer-btn {
-      background-color: #2d3a42;
-      color: #00c4cc;
-      border: 1px solid #00c4cc;
-      border-radius: 4px;
-      width: 30px;
-      height: 30px;
-      font-size: 18px;
+      background-color: #2d4a66;
+      color: #00d4cc;
+      border: 2px solid #00d4cc;
+      border-radius: 6px;
+      width: 40px;
+      height: 40px;
+      font-size: 20px;
       cursor: pointer;
-      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
       display: flex;
       align-items: center;
       justify-content: center;
+      transition: all 0.3s ease;
     }
     .layer-btn:hover {
-      background-color: #00c4cc;
-      color: #0f1a20;
+      background-color: #00d4cc;
+      color: #1a2e44;
     }
     .layer-btn.active {
-      background-color: #00c4cc;
-      color: #0f1a20;
+      background-color: #00d4cc;
+      color: #1a2e44;
     }
-    .role-switch { margin: 10px 0; }
-    .leaflet-pane { filter: grayscale(30%) brightness(0.7) hue-rotate(180deg); }
+    .role-switch {
+      margin: 15px 0;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      padding: 10px;
+      background: linear-gradient(90deg, #1a2e44, #2d4a66);
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0, 212, 204, 0.2);
+    }
+    .role-btn {
+      padding: 8px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      background: linear-gradient(135deg, #00d4cc, #00a8a0);
+      color: #1a2e44;
+      transition: all 0.3s ease;
+      box-shadow: 0 2px 10px rgba(0, 212, 204, 0.3);
+      position: relative;
+      overflow: hidden;
+    }
+    .role-btn::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 0;
+      height: 0;
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      transition: width 0.4s ease, height 0.4s ease;
+    }
+    .role-btn:hover::after {
+      width: 200px;
+      height: 200px;
+    }
+    .role-btn.active {
+      background: linear-gradient(135deg, #00a8a0, #00d4cc);
+      transform: scale(1.05);
+      box-shadow: 0 4px 20px rgba(0, 212, 204, 0.5);
+    }
+    .role-btn:disabled {
+      background: #3d5f7d;
+      cursor: not-allowed;
+      color: #a3e4db;
+    }
+    .leaflet-pane { filter: grayscale(20%) brightness(0.8); }
+    .menu-item {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+    }
   </style>
 </head>
 <body>
 <div class="sidebar">
   <h2>UTM-система</h2>
-  <div class="role-switch">
-    <label>Роль: </label>
-    <label><input type="radio" name="user-role" value="user" checked onclick="setRole('user')"> Пользователь</label>
-    <label><input type="radio" name="user-role" value="admin" onclick="setRole('admin')"> Админ</label>
+  <div class="role-switch" id="role-switch">
+    <button class="role-btn" onclick="setRole('user')">Пользователь</button>
+    <button class="role-btn" onclick="setRole('admin')">Админ</button>
   </div>
   <ul>
-    <li onclick="showForm('drone-form')">Регистрация дрона</li>
-    <li onclick="showForm('pilot-form')">Регистрация пилота</li>
-    <li onclick="showForm('flight-request-form')">Подача заявки на полёт</li>
-    <li onclick="showForm('no-fly-zone-form')">Настройка запретной зоны</li>
-    <li onclick="startMonitoring()">Мониторинг</li>
-    <li id="alerts">Оповещения: Нет</li>
-    <li onclick="showForm('drone-list')">Просмотр дронов</li>
-    <li onclick="showForm('pilot-list')">Просмотр пилотов</li>
-    <li onclick="showForm('no-fly-list')">Просмотр зон</li>
-    <li onclick="showForm('flight-session-list')">Просмотр сессий</li>
+    <li class="menu-item">
+      <div class="menu-label" onclick="showForm('drone-form')">Регистрация дрона</div>
+      <form id="drone-form">
+        <h3>Регистрация дрона</h3>
+        <input type="text" id="drone-brand" placeholder="Марка" required>
+        <input type="text" id="drone-model" placeholder="Модель" required>
+        <input type="text" id="drone-serial" placeholder="Серийный номер" required>
+        <button type="button" onclick="registerDrone()">Зарегистрировать</button>
+      </form>
+    </li>
+    <li class="menu-item">
+      <div class="menu-label" onclick="showForm('pilot-form')">Регистрация пилота</div>
+      <form id="pilot-form">
+        <h3>Регистрация пилота</h3>
+        <input type="text" id="pilot-name" placeholder="ФИО" required>
+        <input type="text" id="pilot-contact" placeholder="Контактные данные" required>
+        <button type="button" onclick="registerPilot()">Зарегистрировать</button>
+      </form>
+    </li>
+    <li class="menu-item">
+      <div class="menu-label" onclick="showForm('flight-request-form')">Подача заявки на полёт</div>
+      <form id="flight-request-form">
+        <h3>Подача заявки на полёт</h3>
+        <label>Дата начала: <input type="datetime-local" id="flight-start" required></label>
+        <label>Дата окончания: <input type="datetime-local" id="flight-end" required></label>
+        <label>Максимальная высота: <input type="number" id="flight-max-altitude" placeholder="м" required></label>
+        <label>Вес дрона: <input type="number" id="drone-weight" placeholder="кг" required></label>
+        <label>Модель БВС:
+          <select id="drone-model-select">
+            <option value="">Выберите дрон</option>
+          </select>
+        </label>
+        <label>Пилот:
+          <select id="pilot-select">
+            <option value="">Выберите пилота</option>
+          </select>
+        </label>
+        <label>Прямая видимость: <input type="checkbox" id="direct-visibility"></label>
+        <label>Тип маршрута:</label>
+        <label><input type="radio" name="route-type" value="points" checked onclick="toggleRouteType()"> Точки</label>
+        <label><input type="radio" name="route-type" value="circle" onclick="toggleRouteType()"> Круг</label>
+        <div id="route-points" class="route-input active">
+          <p>Нажмите на карту для добавления точек маршрута.</p>
+        </div>
+        <div id="route-circle" class="route-input">
+          <p>Нажмите на карту для выбора центра круга.</p>
+          <label>Радиус (м): <input type="number" id="circle-radius" placeholder="Радиус в метрах" min="10"></label>
+        </div>
+        <button type="button" onclick="submitFlightRequest()">Отправить в полёт</button>
+        <button type="button" onclick="briefing()">Брифинг</button>
+        <p id="request-status">Статус: Ожидание</p>
+      </form>
+    </li>
+    <li class="menu-item">
+      <div class="menu-label" onclick="showForm('no-fly-zone-form')">Настройка запретной зоны</div>
+      <form id="no-fly-zone-form">
+        <h3>Настройка запретной зоны</h3>
+        <div id="no-fly-points">
+          <p>Нажмите на карту для добавления точек запретной зоны.</p>
+        </div>
+        <button type="button" onclick="saveNoFlyZone()">Сохранить зону</button>
+        <button type="button" onclick="clearNoFlyZone()">Очистить зону</button>
+      </form>
+    </li>
+    <li class="menu-item">
+      <div class="menu-label" onclick="startMonitoring()">Мониторинг</div>
+    </li>
+    <li class="menu-item">
+      <div class="menu-label" id="alerts">Оповещения: Нет</div>
+    </li>
+    <li class="menu-item">
+      <div class="menu-label" onclick="showForm('drone-list')">Просмотр дронов</div>
+      <form id="drone-list">
+        <h3>Зарегистрированные дроны</h3>
+        <div id="drone-list-items"></div>
+      </form>
+    </li>
+    <li class="menu-item">
+      <div class="menu-label" onclick="showForm('pilot-list')">Просмотр пилотов</div>
+      <form id="pilot-list">
+        <h3>Зарегистрированные пилоты</h3>
+        <div id="pilot-list-items"></div>
+      </form>
+    </li>
+    <li class="menu-item">
+      <div class="menu-label" onclick="showForm('no-fly-list')">Просмотр зон</div>
+      <form id="no-fly-list">
+        <h3>Сохранённые запретные зоны</h3>
+        <div id="no-fly-list-items"></div>
+      </form>
+    </li>
+    <li class="menu-item">
+      <div class="menu-label" onclick="showForm('flight-session-list')">Просмотр сессий</div>
+      <form id="flight-session-list">
+        <h3>Полётные сессии</h3>
+        <div id="flight-session-list-items"></div>
+      </form>
+    </li>
   </ul>
-  <form id="drone-form">
-    <h3>Регистрация дрона</h3>
-    <input type="text" id="drone-brand" placeholder="Марка" required>
-    <input type="text" id="drone-model" placeholder="Модель" required>
-    <input type="text" id="drone-serial" placeholder="Серийный номер" required>
-    <button type="button" onclick="registerDrone()">Зарегистрировать</button>
-  </form>
-  <form id="pilot-form">
-    <h3>Регистрация пилота</h3>
-    <input type="text" id="pilot-name" placeholder="ФИО" required>
-    <input type="text" id="pilot-contact" placeholder="Контактные данные" required>
-    <button type="button" onclick="registerPilot()">Зарегистрировать</button>
-  </form>
-  <form id="flight-request-form">
-    <h3>Подача заявки на полёт</h3>
-    <label>Дата начала: <input type="datetime-local" id="flight-start" required></label>
-    <label>Дата окончания: <input type="datetime-local" id="flight-end" required></label>
-    <label>Максимальная высота: <input type="number" id="flight-max-altitude" placeholder="м" required></label>
-    <label>Вес дрона: <input type="number" id="drone-weight" placeholder="кг" required></label>
-    <label>Модель БВС:
-      <select id="drone-model-select">
-        <option value="">Выберите дрон</option>
-      </select>
-    </label>
-    <label>Пилот:
-      <select id="pilot-select">
-        <option value="">Выберите пилота</option>
-      </select>
-    </label>
-    <label>Прямая видимость: <input type="checkbox" id="direct-visibility"></label>
-    <label>Тип маршрута:</label>
-    <label><input type="radio" name="route-type" value="points" checked onclick="toggleRouteType()"> Точки</label>
-    <label><input type="radio" name="route-type" value="circle" onclick="toggleRouteType()"> Круг</label>
-    <div id="route-points" class="route-input active">
-      <p>Нажмите на карту для добавления точек маршрута.</p>
-    </div>
-    <div id="route-circle" class="route-input">
-      <p>Нажмите на карту для выбора центра круга.</p>
-      <label>Радиус (м): <input type="number" id="circle-radius" placeholder="Радиус в метрах" min="10"></label>
-    </div>
-    <button type="button" onclick="submitFlightRequest()">Отправить в полёт</button>
-    <button type="button" onclick="briefing()">Брифинг</button>
-    <p id="request-status">Статус: Ожидание</p>
-  </form>
-  <form id="no-fly-zone-form">
-    <h3>Настройка запретной зоны</h3>
-    <div id="no-fly-points">
-      <p>Нажмите на карту для добавления точек запретной зоны.</p>
-    </div>
-    <button type="button" onclick="saveNoFlyZone()">Сохранить зону</button>
-    <button type="button" onclick="clearNoFlyZone()">Очистить зону</button>
-  </form>
-  <form id="drone-list">
-    <h3>Зарегистрированные дроны</h3>
-    <div id="drone-list-items"></div>
-  </form>
-  <form id="pilot-list">
-    <h3>Зарегистрированные пилоты</h3>
-    <div id="pilot-list-items"></div>
-  </form>
-  <form id="no-fly-list">
-    <h3>Сохранённые запретные зоны</h3>
-    <div id="no-fly-list-items"></div>
-  </form>
-  <form id="flight-session-list">
-    <h3>Полётные сессии</h3>
-    <div id="flight-session-list-items"></div>
-  </form>
 </div>
 <div class="top-bar" id="weather-bar">
   <span>Погода: Загрузка...</span>
@@ -278,9 +421,9 @@
   let pilots = JSON.parse(localStorage.getItem('pilots')) || [];
   let noFlyZones = JSON.parse(localStorage.getItem('noFlyZones')) || [];
   let flightSessions = JSON.parse(localStorage.getItem('flightSessions')) || [];
-  let savedNoFlyPolygons = []; // Массив для хранения полигонов на карте
-  let currentRoutePath = null; // Для хранения текущего маршрута сессии
-  let userRole = localStorage.getItem('userRole') || 'user'; // Роль по умолчанию
+  let savedNoFlyPolygons = [];
+  let currentRoutePath = null;
+  let userRole = localStorage.getItem('userRole') || 'user';
 
   const map = L.map('map', {
     zoomControl: false,
@@ -312,24 +455,34 @@
   let routePath = null;
   const routePoints = [];
   let routeMarkers = [];
-  let circleCenter = null; // Для хранения центра круга
-  let circleOverlay = null; // Для отображения круга на карте
+  let circleCenter = null;
+  let circleOverlay = null;
 
   let droneMarker = null;
   let isMonitoring = false;
   let currentLayer = 'openstreetmap';
-  let lastWeatherUpdate = 0; // Для ограничения частоты обновлений
+  let lastWeatherUpdate = 0;
 
   document.getElementById('osm-btn').classList.add('active');
-  document.querySelector(`input[name="user-role"][value="${userRole}"]`).checked = true;
 
-  // Установка роли пользователя
   function setRole(role) {
     userRole = role;
     localStorage.setItem('userRole', role);
+    updateRoleButtons();
   }
 
-  // Обновление выпадающих списков дронов и пилотов
+  function updateRoleButtons() {
+    const buttons = document.querySelectorAll('.role-btn');
+    buttons.forEach(btn => {
+      btn.classList.remove('active');
+      if (btn.textContent === userRole === 'user' ? 'Пользователь' : 'Админ') {
+        btn.classList.add('active');
+      }
+    });
+  }
+
+  updateRoleButtons();
+
   function updateDropdowns() {
     const droneSelect = document.getElementById('drone-model-select');
     const pilotSelect = document.getElementById('pilot-select');
@@ -351,7 +504,6 @@
     });
   }
 
-  // Обновление списка дронов с кнопками удаления
   function updateDroneList() {
     const list = document.getElementById('drone-list-items');
     list.innerHTML = '';
@@ -369,7 +521,6 @@
     });
   }
 
-  // Обновление списка пилотов с кнопками удаления
   function updatePilotList() {
     const list = document.getElementById('pilot-list-items');
     list.innerHTML = '';
@@ -387,7 +538,6 @@
     });
   }
 
-  // Обновление списка зон с кнопками удаления
   function updateNoFlyList() {
     const list = document.getElementById('no-fly-list-items');
     list.innerHTML = '';
@@ -405,7 +555,6 @@
     });
   }
 
-  // Обновление списка сессий с кнопками удаления и кликабельностью
   function updateFlightSessionList() {
     const list = document.getElementById('flight-session-list-items');
     list.innerHTML = '';
@@ -424,9 +573,7 @@
     });
   }
 
-  // Рендеринг маршрута сессии на карте
   function renderSessionRoute(flightSessionId) {
-    // Удаляем текущий маршрут, если он есть
     if (currentRoutePath) {
       map.removeLayer(currentRoutePath);
       currentRoutePath = null;
@@ -436,7 +583,7 @@
       const session = flightSessions.find(s => s.flightSessionId === flightSessionId);
       if (session && session.routePoints && session.routePoints.length > 0) {
         currentRoutePath = L.polyline(session.routePoints, {
-          color: '#00c4cc',
+          color: '#00d4cc',
           weight: 3
         }).addTo(map);
         map.fitBounds(L.latLngBounds(session.routePoints));
@@ -444,26 +591,23 @@
     }
   }
 
-  // Рендеринг сохранённых зон при загрузке
   function renderSavedNoFlyZones() {
     savedNoFlyPolygons.forEach(polygon => map.removeLayer(polygon));
     savedNoFlyPolygons = noFlyZones.map(zone =>
             L.polygon(zone.points, {
-              color: '#ff0000',
-              fillColor: '#ff0000',
+              color: '#ff4d4d',
+              fillColor: '#ff4d4d',
               fillOpacity: 0.2,
               id: zone.id
             }).addTo(map)
     );
   }
 
-  // Переключение типа маршрута
   function toggleRouteType() {
     const routeType = document.querySelector('input[name="route-type"]:checked').value;
     document.getElementById('route-points').classList.toggle('active', routeType === 'points');
     document.getElementById('route-circle').classList.toggle('active', routeType === 'circle');
 
-    // Очищаем текущий маршрут
     routePoints.length = 0;
     routeMarkers.forEach(marker => map.removeLayer(marker));
     routeMarkers = [];
@@ -483,20 +627,19 @@
     if (routeCircleDiv) routeCircleDiv.innerHTML = '<p>Нажмите на карту для выбора центра круга.</p><label>Радиус (м): <input type="number" id="circle-radius" placeholder="Радиус в метрах" min="10"></label>';
   }
 
-  // Функция для генерации точек кругового маршрута
   function generateCirclePoints(center, radius, numPoints = 36) {
     const points = [];
-    const R = 6378137; // Радиус Земли в метрах
-    const lat = center.lat * Math.PI / 180; // Переводим в радианы
+    const R = 6378137;
+    const lat = center.lat * Math.PI / 180;
     const lng = center.lng * Math.PI / 180;
 
     for (let i = 0; i < numPoints; i++) {
-      const bearing = (i * 360 / numPoints) * Math.PI / 180; // Угол в радианах
+      const bearing = (i * 360 / numPoints) * Math.PI / 180;
       const lat2 = Math.asin(Math.sin(lat) * Math.cos(radius / R) + Math.cos(lat) * Math.sin(radius / R) * Math.cos(bearing));
       const lng2 = lng + Math.atan2(Math.sin(bearing) * Math.sin(radius / R) * Math.cos(lat), Math.cos(radius / R) - Math.sin(lat) * Math.sin(lat2));
       points.push([lat2 * 180 / Math.PI, lng2 * 180 / Math.PI]);
     }
-    points.push(points[0]); // Замыкаем круг
+    points.push(points[0]);
     return points;
   }
 
@@ -513,15 +656,15 @@
       document.getElementById('no-fly-points').appendChild(pointDiv);
 
       const marker = L.marker([latlng.lat, latlng.lng], {
-        icon: L.divIcon({ className: 'no-fly-marker', html: '<div style="background: red; width: 10px; height: 10px; border-radius: 50%;"></div>' })
+        icon: L.divIcon({ className: 'no-fly-marker', html: '<div style="background: #ff4d4d; width: 12px; height: 12px; border-radius: 50%;"></div>' })
       }).addTo(map);
       noFlyMarkers.push(marker);
 
       if (noFlyZone) map.removeLayer(noFlyZone);
       if (noFlyPoints.length >= 3) {
         noFlyZone = L.polygon(noFlyPoints, {
-          color: '#ff0000',
-          fillColor: '#ff0000',
+          color: '#ff4d4d',
+          fillColor: '#ff4d4d',
           fillOpacity: 0.2
         }).addTo(map);
       }
@@ -539,14 +682,14 @@
           document.getElementById('route-points').appendChild(pointDiv);
 
           const marker = L.marker([latlng.lat, latlng.lng], {
-            icon: L.divIcon({ className: 'route-marker', html: '<div style="background: #00c4cc; width: 10px; height: 10px; border-radius: 50%;"></div>' })
+            icon: L.divIcon({ className: 'route-marker', html: '<div style="background: #00d4cc; width: 12px; height: 12px; border-radius: 50%;"></div>' })
           }).addTo(map);
           routeMarkers.push(marker);
 
           if (routePath) map.removeLayer(routePath);
-          routePath = L.polyline(routePoints, { color: '#00c4cc', weight: 3 }).addTo(map);
+          routePath = L.polyline(routePoints, { color: '#00d4cc', weight: 3 }).addTo(map);
         } else if (routeType === 'circle') {
-          if (circleCenter) return; // Уже выбрана точка
+          if (circleCenter) return;
 
           circleCenter = latlng;
           const pointDiv = document.createElement('div');
@@ -555,7 +698,7 @@
           document.getElementById('route-circle').appendChild(pointDiv);
 
           const marker = L.marker([latlng.lat, latlng.lng], {
-            icon: L.divIcon({ className: 'route-marker', html: '<div style="background: #00c4cc; width: 10px; height: 10px; border-radius: 50%;"></div>' })
+            icon: L.divIcon({ className: 'route-marker', html: '<div style="background: #00d4cc; width: 12px; height: 12px; border-radius: 50%;"></div>' })
           }).addTo(map);
           routeMarkers.push(marker);
 
@@ -566,7 +709,7 @@
               if (circleOverlay) map.removeLayer(circleOverlay);
               routePoints.length = 0;
               routePoints.push(...generateCirclePoints(circleCenter, radius));
-              circleOverlay = L.polyline(routePoints, { color: '#00c4cc', weight: 3 }).addTo(map);
+              circleOverlay = L.polyline(routePoints, { color: '#00d4cc', weight: 3 }).addTo(map);
             }
           };
         }
@@ -575,26 +718,30 @@
   });
 
   function showForm(formId) {
-    const forms = document.querySelectorAll('.sidebar form');
-    if (!forms) return;
-    forms.forEach(form => {
-      form.classList.remove('active');
-    });
     const form = document.getElementById(formId);
-    if (form) {
-      if (formId === 'no-fly-zone-form' && userRole !== 'admin') {
-        alert('Эта функция доступна только администраторам!');
-        return; // Не показываем форму для неадминов
-      }
+    if (!form) return;
+
+    if (formId === 'no-fly-zone-form' && userRole !== 'admin') {
+      alert('Эта функция доступна только администраторам!');
+      return;
+    }
+
+    const isActive = form.classList.contains('active');
+    const forms = document.querySelectorAll('.sidebar form');
+    forms.forEach(f => {
+      f.classList.remove('active');
+    });
+
+    if (!isActive) {
       form.classList.add('active');
     }
+
     if (formId === 'drone-list') updateDroneList();
     if (formId === 'pilot-list') updatePilotList();
     if (formId === 'no-fly-list') updateNoFlyList();
-    if (formId === 'flight-session-list') {
-      updateFlightSessionList();
-    }
+    if (formId === 'flight-session-list') updateFlightSessionList();
     if (formId === 'flight-request-form') updateDropdowns();
+
     routePoints.length = 0;
     routeMarkers.forEach(marker => map.removeLayer(marker));
     routeMarkers = [];
@@ -608,6 +755,7 @@
       map.removeLayer(currentRoutePath);
       currentRoutePath = null;
     }
+
     const routePointsDiv = document.getElementById('route-points');
     if (routePointsDiv) routePointsDiv.innerHTML = '<p>Нажмите на карту для добавления точек маршрута.</p>';
     const routeCircleDiv = document.getElementById('route-circle');
@@ -672,7 +820,6 @@
 
     let inNoFlyZone = false;
 
-    // Проверка текущей запретной зоны (если она есть)
     if (noFlyZone) {
       routePoints.forEach(point => {
         if (isPointInPolygon(point, noFlyPoints)) {
@@ -681,7 +828,6 @@
       });
     }
 
-    // Проверка всех сохранённых запретных зон
     noFlyZones.forEach(zone => {
       routePoints.forEach(point => {
         if (isPointInPolygon(point, zone.points)) {
@@ -702,7 +848,7 @@
       droneWeight,
       directVisibility,
       routePoints: [...routePoints],
-      routeType, // Сохраняем тип маршрута
+      routeType,
       status,
       timestamp: new Date().toISOString()
     };
@@ -727,7 +873,7 @@
   }
 
   function briefing() {
-    const flightSessionId = document.getElementById('drone-model-select').value; // Используем временно для примера
+    const flightSessionId = document.getElementById('drone-model-select').value;
     const session = flightSessions.find(s => s.flightSessionId === flightSessionId);
     if (session) {
       alert(`Брифинг для сессии #${session.flightSessionId}: Проверка данных перед полётом. Дрон: ${session.drone.brand} ${session.drone.model}, Пилот: ${session.pilot.name}, Статус: ${session.status}`);
@@ -907,11 +1053,11 @@
 
   async function fetchWeather(lat, lon) {
     const now = Date.now();
-    if (now - lastWeatherUpdate < 5000) return; // Ограничение обновлений каждые 5 секунд
+    if (now - lastWeatherUpdate < 5000) return;
     lastWeatherUpdate = now;
 
     try {
-      const apiKey = '00150018ecbe7940cdd3818ae9c549f4'; // Используем предоставленный ключ
+      const apiKey = '00150018ecbe7940cdd3818ae9c549f4';
       const response = await fetch(`https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric`);
       if (!response.ok) {
         throw new Error(`Ошибка HTTP: ${response.status} (${response.statusText})`);
@@ -922,20 +1068,16 @@
       document.getElementById('weather-bar').innerHTML = `Погода в Астане: +${temp.toFixed(0)}°C, Ветер: ${wind.toFixed(1)} м/с`;
     } catch (error) {
       console.error('Ошибка при загрузке погоды:', error.message);
-      // Заглушка как запасной вариант
-      const temp = 15;
-      const wind = 5;
-      document.getElementById('weather-bar').innerHTML = `Погода в Астане: +${temp}°C, Ветер: ${wind} м/с (заглушка из-за ошибки)`;
+      document.getElementById('weather-bar').innerHTML = `Погода в Астане: +15°C, Ветер: 5 м/с (ошибка: проверьте API-ключ на https://openweathermap.org/)`;
     }
   }
 
-  // Фиксируем погоду для Астаны (51.1694, 71.4491)
   function updateWeatherForAstana() {
     fetchWeather(51.1694, 71.4491);
   }
 
-  map.on('load', updateWeatherForAstana); // Инициализация при загрузке карты
-  updateWeatherForAstana(); // Вызов сразу при старте
+  map.on('load', updateWeatherForAstana);
+  updateWeatherForAstana();
   renderSavedNoFlyZones();
   updateDropdowns();
   updateDroneList();
