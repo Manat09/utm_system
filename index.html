@@ -1164,6 +1164,79 @@
     const lng = toDMS(center.lng, false);
     document.getElementById('coords-bar').innerHTML = `Координаты: ${lat} ${lng}`;
   });
+
+  // Объект для хранения позиций дронов
+  let dronePositions = JSON.parse(localStorage.getItem('dronePositions')) || {};
+  let dronePaths = {};
+
+  // Инициализация маркеров и маршрутов при загрузке
+  function initDronePositions() {
+    for (let droneId in dronePositions) {
+      const positions = dronePositions[droneId];
+      if (positions.length > 0) {
+        const lastPos = positions[positions.length - 1];
+        const marker = L.marker([lastPos.lat, lastPos.lon]).addTo(map)
+                .bindPopup(`Дрон: ${droneId}`);
+        dronePaths[droneId] = { marker, path: L.polyline(positions.map(p => [p.lat, p.lon]), { color: '#00d4cc', weight: 3 }).addTo(map) };
+      }
+    }
+  }
+
+  // Обновление позиции дрона
+  function updateDronePosition(droneId, lat, lon) {
+    const latitude = parseFloat(lat);
+    const longitude = parseFloat(lon);
+
+    if (isNaN(latitude) || isNaN(longitude)) {
+      console.error("Неверные координаты:", lat, lon);
+      return;
+    }
+
+    // Добавляем новую позицию в массив
+    if (!dronePositions[droneId]) {
+      dronePositions[droneId] = [];
+    }
+    dronePositions[droneId].push({ lat: latitude, lon: longitude });
+
+    // Сохраняем в localStorage
+    localStorage.setItem('dronePositions', JSON.stringify(dronePositions));
+
+    // Если маркер для дрона уже существует, обновляем его
+    if (dronePaths[droneId]) {
+      const { marker, path } = dronePaths[droneId];
+      marker.setLatLng([latitude, longitude]);
+      path.setLatLngs(dronePositions[droneId].map(p => [p.lat, p.lon]));
+    } else {
+      // Создаём новый маркер и путь
+      const marker = L.marker([latitude, longitude]).addTo(map)
+              .bindPopup(`Дрон: ${droneId}`);
+      const path = L.polyline([[latitude, longitude]], { color: '#00d4cc', weight: 3 }).addTo(map);
+      dronePaths[droneId] = { marker, path };
+    }
+
+    // Центрируем карту на последней позиции
+    map.setView([latitude, longitude], 13);
+  }
+
+  // Получение параметров из URL
+  function getQueryParams() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const droneId = urlParams.get('droneId');
+    const lat = urlParams.get('lat');
+    const lon = urlParams.get('lon');
+
+    if (droneId && lat && lon) {
+      updateDronePosition(droneId, lat, lon);
+      // Очистка URL после обработки
+      window.history.pushState({}, document.title, window.location.pathname);
+    }
+  }
+
+  // Инициализация при загрузке
+  initDronePositions();
+
+  // Проверка новых данных каждые 5 секунд
+  setInterval(getQueryParams, 5000);
 </script>
 </body>
 </html>
