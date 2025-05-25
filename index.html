@@ -211,8 +211,15 @@
       </select>
     </label>
     <label>Прямая видимость: <input type="checkbox" id="direct-visibility"></label>
-    <div id="route-points">
+    <label>Тип маршрута:</label>
+    <label><input type="radio" name="route-type" value="points" checked onclick="toggleRouteType()"> Точки</label>
+    <label><input type="radio" name="route-type" value="circle" onclick="toggleRouteType()"> Круг</label>
+    <div id="route-points" class="route-input active">
       <p>Нажмите на карту для добавления точек маршрута.</p>
+    </div>
+    <div id="route-circle" class="route-input">
+      <p>Нажмите на карту для выбора центра круга.</p>
+      <label>Радиус (м): <input type="number" id="circle-radius" placeholder="Радиус в метрах" min="10"></label>
     </div>
     <button type="button" onclick="submitFlightRequest()">Отправить в полёт</button>
     <button type="button" onclick="briefing()">Брифинг</button>
@@ -298,6 +305,8 @@
   let routePath = null;
   const routePoints = [];
   let routeMarkers = [];
+  let circleCenter = null; // Для хранения центра круга
+  let circleOverlay = null; // Для отображения круга на карте
 
   let droneMarker = null;
   let isMonitoring = false;
@@ -433,6 +442,49 @@
     );
   }
 
+  // Переключение типа маршрута
+  function toggleRouteType() {
+    const routeType = document.querySelector('input[name="route-type"]:checked').value;
+    document.getElementById('route-points').classList.toggle('active', routeType === 'points');
+    document.getElementById('route-circle').classList.toggle('active', routeType === 'circle');
+
+    // Очищаем текущий маршрут
+    routePoints.length = 0;
+    routeMarkers.forEach(marker => map.removeLayer(marker));
+    routeMarkers = [];
+    if (routePath) {
+      map.removeLayer(routePath);
+      routePath = null;
+    }
+    if (circleOverlay) {
+      map.removeLayer(circleOverlay);
+      circleOverlay = null;
+    }
+    circleCenter = null;
+
+    const routePointsDiv = document.getElementById('route-points');
+    if (routePointsDiv) routePointsDiv.innerHTML = '<p>Нажмите на карту для добавления точек маршрута.</p>';
+    const routeCircleDiv = document.getElementById('route-circle');
+    if (routeCircleDiv) routeCircleDiv.innerHTML = '<p>Нажмите на карту для выбора центра круга.</p><label>Радиус (м): <input type="number" id="circle-radius" placeholder="Радиус в метрах" min="10"></label>';
+  }
+
+  // Функция для генерации точек кругового маршрута
+  function generateCirclePoints(center, radius, numPoints = 36) {
+    const points = [];
+    const R = 6378137; // Радиус Земли в метрах
+    const lat = center.lat * Math.PI / 180; // Переводим в радианы
+    const lng = center.lng * Math.PI / 180;
+
+    for (let i = 0; i < numPoints; i++) {
+      const bearing = (i * 360 / numPoints) * Math.PI / 180; // Угол в радианах
+      const lat2 = Math.asin(Math.sin(lat) * Math.cos(radius / R) + Math.cos(lat) * Math.sin(radius / R) * Math.cos(bearing));
+      const lng2 = lng + Math.atan2(Math.sin(bearing) * Math.sin(radius / R) * Math.cos(lat), Math.cos(radius / R) - Math.sin(lat) * Math.sin(lat2));
+      points.push([lat2 * 180 / Math.PI, lng2 * 180 / Math.PI]);
+    }
+    points.push(points[0]); // Замыкаем круг
+    return points;
+  }
+
   map.on('click', function(e) {
     const latlng = e.latlng;
 
@@ -461,20 +513,48 @@
     } else {
       const flightForm = document.getElementById('flight-request-form');
       if (flightForm && flightForm.classList.contains('active')) {
-        routePoints.push([latlng.lat, latlng.lng]);
+        const routeType = document.querySelector('input[name="route-type"]:checked').value;
 
-        const pointDiv = document.createElement('div');
-        pointDiv.className = 'route-point';
-        pointDiv.innerHTML = `Точка: [${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}]`;
-        document.getElementById('route-points').appendChild(pointDiv);
+        if (routeType === 'points') {
+          routePoints.push([latlng.lat, latlng.lng]);
 
-        const marker = L.marker([latlng.lat, latlng.lng], {
-          icon: L.divIcon({ className: 'route-marker', html: '<div style="background: #00c4cc; width: 10px; height: 10px; border-radius: 50%;"></div>' })
-        }).addTo(map);
-        routeMarkers.push(marker);
+          const pointDiv = document.createElement('div');
+          pointDiv.className = 'route-point';
+          pointDiv.innerHTML = `Точка: [${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}]`;
+          document.getElementById('route-points').appendChild(pointDiv);
 
-        if (routePath) map.removeLayer(routePath);
-        routePath = L.polyline(routePoints, { color: '#00c4cc', weight: 3 }).addTo(map);
+          const marker = L.marker([latlng.lat, latlng.lng], {
+            icon: L.divIcon({ className: 'route-marker', html: '<div style="background: #00c4cc; width: 10px; height: 10px; border-radius: 50%;"></div>' })
+          }).addTo(map);
+          routeMarkers.push(marker);
+
+          if (routePath) map.removeLayer(routePath);
+          routePath = L.polyline(routePoints, { color: '#00c4cc', weight: 3 }).addTo(map);
+        } else if (routeType === 'circle') {
+          if (circleCenter) return; // Уже выбрана точка
+
+          circleCenter = latlng;
+          const pointDiv = document.createElement('div');
+          pointDiv.className = 'route-point';
+          pointDiv.innerHTML = `Центр: [${latlng.lat.toFixed(4)}, ${latlng.lng.toFixed(4)}]`;
+          document.getElementById('route-circle').appendChild(pointDiv);
+
+          const marker = L.marker([latlng.lat, latlng.lng], {
+            icon: L.divIcon({ className: 'route-marker', html: '<div style="background: #00c4cc; width: 10px; height: 10px; border-radius: 50%;"></div>' })
+          }).addTo(map);
+          routeMarkers.push(marker);
+
+          const radiusInput = document.getElementById('circle-radius');
+          radiusInput.oninput = () => {
+            const radius = parseFloat(radiusInput.value);
+            if (radius && radius >= 10) {
+              if (circleOverlay) map.removeLayer(circleOverlay);
+              routePoints.length = 0;
+              routePoints.push(...generateCirclePoints(circleCenter, radius));
+              circleOverlay = L.polyline(routePoints, { color: '#00c4cc', weight: 3 }).addTo(map);
+            }
+          };
+        }
       }
     }
   });
@@ -492,19 +572,25 @@
     if (formId === 'no-fly-list') updateNoFlyList();
     if (formId === 'flight-session-list') {
       updateFlightSessionList();
-      // Не вызываем renderSessionRoute автоматически, так как пользователь сам выберет сессию
     }
     if (formId === 'flight-request-form') updateDropdowns();
     routePoints.length = 0;
     routeMarkers.forEach(marker => map.removeLayer(marker));
     routeMarkers = [];
     if (routePath) map.removeLayer(routePath);
+    if (circleOverlay) {
+      map.removeLayer(circleOverlay);
+      circleOverlay = null;
+    }
+    circleCenter = null;
     if (currentRoutePath) {
       map.removeLayer(currentRoutePath);
       currentRoutePath = null;
     }
     const routePointsDiv = document.getElementById('route-points');
     if (routePointsDiv) routePointsDiv.innerHTML = '<p>Нажмите на карту для добавления точек маршрута.</p>';
+    const routeCircleDiv = document.getElementById('route-circle');
+    if (routeCircleDiv) routeCircleDiv.innerHTML = '<p>Нажмите на карту для выбора центра круга.</p><label>Радиус (м): <input type="number" id="circle-radius" placeholder="Радиус в метрах" min="10"></label>';
   }
 
   function registerDrone() {
@@ -551,9 +637,10 @@
     const droneSerial = document.getElementById('drone-model-select').value;
     const pilotContact = document.getElementById('pilot-select').value;
     const directVisibility = document.getElementById('direct-visibility').checked ? 1 : 0;
+    const routeType = document.querySelector('input[name="route-type"]:checked').value;
 
     if (routePoints.length < 2) {
-      alert('Добавьте хотя бы две точки маршрута!');
+      alert('Добавьте маршрут (для точек — минимум две, для круга — центр и радиус)!');
       return;
     }
 
@@ -594,6 +681,7 @@
       droneWeight,
       directVisibility,
       routePoints: [...routePoints],
+      routeType, // Сохраняем тип маршрута
       status,
       timestamp: new Date().toISOString()
     };
@@ -605,8 +693,15 @@
     routeMarkers.forEach(marker => map.removeLayer(marker));
     routeMarkers = [];
     if (routePath) map.removeLayer(routePath);
+    if (circleOverlay) {
+      map.removeLayer(circleOverlay);
+      circleOverlay = null;
+    }
+    circleCenter = null;
     const routePointsDiv = document.getElementById('route-points');
     if (routePointsDiv) routePointsDiv.innerHTML = '<p>Нажмите на карту для добавления точек маршрута.</p>';
+    const routeCircleDiv = document.getElementById('route-circle');
+    if (routeCircleDiv) routeCircleDiv.innerHTML = '<p>Нажмите на карту для выбора центра круга.</p><label>Радиус (м): <input type="number" id="circle-radius" placeholder="Радиус в метрах" min="10"></label>';
     updateFlightSessionList();
   }
 
@@ -671,6 +766,7 @@
     if (noFlyZone) noFlyZone.addTo(map);
     noFlyMarkers.forEach(marker => marker.addTo(map));
     if (routePath) routePath.addTo(map);
+    if (circleOverlay) circleOverlay.addTo(map);
     routeMarkers.forEach(marker => marker.addTo(map));
     if (droneMarker) droneMarker.addTo(map);
     if (currentRoutePath) currentRoutePath.addTo(map);
