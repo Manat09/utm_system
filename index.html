@@ -283,6 +283,17 @@
       cursor: not-allowed;
       color: #a3e4db;
     }
+    .delete-btn {
+      background: #ff4d4d;
+      border: none;
+      border-radius: 4px;
+      padding: 5px 10px;
+      cursor: pointer;
+      transition: background 0.3s ease;
+    }
+    .delete-btn:hover {
+      background: #ff1a1a;
+    }
     .leaflet-pane { filter: grayscale(20%) brightness(0.8); }
     .menu-item {
       display: flex;
@@ -423,6 +434,7 @@
   let flightSessions = JSON.parse(localStorage.getItem('flightSessions')) || [];
   let savedNoFlyPolygons = [];
   let currentRoutePath = null;
+  let savedRoutes = JSON.parse(localStorage.getItem('savedRoutes')) || [];
   let userRole = localStorage.getItem('userRole') || 'user';
 
   const map = L.map('map', {
@@ -475,7 +487,7 @@
     const buttons = document.querySelectorAll('.role-btn');
     buttons.forEach(btn => {
       btn.classList.remove('active');
-      if (btn.textContent === userRole === 'user' ? 'Пользователь' : 'Админ') {
+      if (btn.textContent === (userRole === 'user' ? 'Пользователь' : 'Админ')) {
         btn.classList.add('active');
       }
     });
@@ -513,7 +525,8 @@
       const text = document.createElement('span');
       text.textContent = `${drone.brand} ${drone.model}, Серийный номер: ${drone.serial}`;
       const deleteButton = document.createElement('button');
-      deleteButton.textContent = 'Удалить';
+      deleteButton.textContent = '❌';
+      deleteButton.className = 'delete-btn';
       deleteButton.onclick = () => deleteDrone(drone.serial);
       item.appendChild(text);
       item.appendChild(deleteButton);
@@ -530,7 +543,8 @@
       const text = document.createElement('span');
       text.textContent = `${pilot.name}, Контакт: ${pilot.contact}`;
       const deleteButton = document.createElement('button');
-      deleteButton.textContent = 'Удалить';
+      deleteButton.textContent = '❌';
+      deleteButton.className = 'delete-btn';
       deleteButton.onclick = () => deletePilot(pilot.contact);
       item.appendChild(text);
       item.appendChild(deleteButton);
@@ -547,7 +561,8 @@
       const text = document.createElement('span');
       text.textContent = `Зона #${zone.id}: ${zone.points.length} точек`;
       const deleteButton = document.createElement('button');
-      deleteButton.textContent = 'Удалить';
+      deleteButton.textContent = '❌';
+      deleteButton.className = 'delete-btn';
       deleteButton.onclick = () => deleteNoFlyZone(zone.id);
       item.appendChild(text);
       item.appendChild(deleteButton);
@@ -564,10 +579,18 @@
       const text = document.createElement('span');
       text.textContent = `Сессия #${session.flightSessionId}: Дрон: ${session.drone.brand} ${session.drone.model}, Пилот: ${session.pilot.name}, Статус: ${session.status}, Время: ${session.timestamp}`;
       text.onclick = () => renderSessionRoute(session.flightSessionId);
+      const saveButton = document.createElement('button');
+      saveButton.textContent = '📌';
+      saveButton.onclick = (e) => {
+        e.stopPropagation();
+        saveRoute(session.flightSessionId);
+      };
       const deleteButton = document.createElement('button');
-      deleteButton.textContent = 'Удалить';
+      deleteButton.textContent = '❌';
+      deleteButton.className = 'delete-btn';
       deleteButton.onclick = () => deleteFlightSession(session.flightSessionId);
       item.appendChild(text);
+      item.appendChild(saveButton);
       item.appendChild(deleteButton);
       list.appendChild(item);
     });
@@ -586,8 +609,34 @@
           color: '#00d4cc',
           weight: 3
         }).addTo(map);
-        map.fitBounds(L.latLngBounds(session.routePoints));
       }
+    }
+  }
+
+  function saveRoute(flightSessionId) {
+    const session = flightSessions.find(s => s.flightSessionId === flightSessionId);
+    if (session && session.routePoints && session.routePoints.length > 0) {
+      const existingRouteIndex = savedRoutes.findIndex(r => r.id === flightSessionId);
+
+      if (existingRouteIndex !== -1) {
+        // Маршрут уже сохранён, удаляем его
+        const existingRoute = savedRoutes[existingRouteIndex];
+        if (existingRoute.polyline) {
+          map.removeLayer(existingRoute.polyline);
+        }
+        savedRoutes.splice(existingRouteIndex, 1);
+      } else {
+        // Маршрут не сохранён, добавляем его
+        const newRoute = L.polyline(session.routePoints, {
+          color: '#00cc00',
+          weight: 3,
+          opacity: 0.7
+        }).addTo(map);
+        savedRoutes.push({ id: flightSessionId, polyline: newRoute });
+      }
+
+      // Обновляем localStorage
+      localStorage.setItem('savedRoutes', JSON.stringify(savedRoutes.map(r => ({ id: r.id, points: r.polyline.getLatLngs() }))));
     }
   }
 
@@ -937,6 +986,7 @@
     routeMarkers.forEach(marker => marker.addTo(map));
     if (droneMarker) droneMarker.addTo(map);
     if (currentRoutePath) currentRoutePath.addTo(map);
+    savedRoutes.forEach(route => route.polyline.addTo(map));
 
     currentLayer = layer;
   }
@@ -1041,7 +1091,15 @@
   function deleteFlightSession(id) {
     if (confirm(`Удалить сессию #${id}?`)) {
       flightSessions = flightSessions.filter(s => s.flightSessionId !== id);
+      savedRoutes = savedRoutes.filter(r => r.id !== id);
       localStorage.setItem('flightSessions', JSON.stringify(flightSessions));
+      localStorage.setItem('savedRoutes', JSON.stringify(savedRoutes.map(r => ({ id: r.id, points: r.polyline.getLatLngs() }))));
+      savedRoutes.forEach(route => {
+        if (route.id === id && route.polyline) {
+          map.removeLayer(route.polyline);
+        }
+      });
+      savedRoutes = savedRoutes.filter(r => r.id !== id);
       if (currentRoutePath) {
         map.removeLayer(currentRoutePath);
         currentRoutePath = null;
@@ -1079,6 +1137,14 @@
   map.on('load', updateWeatherForAstana);
   updateWeatherForAstana();
   renderSavedNoFlyZones();
+  savedRoutes.forEach(route => {
+    const polyline = L.polyline(route.points, {
+      color: '#00cc00',
+      weight: 3,
+      opacity: 0.7
+    }).addTo(map);
+    route.polyline = polyline;
+  });
   updateDropdowns();
   updateDroneList();
   updatePilotList();
