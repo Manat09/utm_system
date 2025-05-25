@@ -592,6 +592,7 @@
   let circleOverlay = null;
 
   let droneMarkers = {};
+  let dronePaths = {}; // Хранилище путей для каждого дрона
   let isMonitoring = false;
   let currentLayer = 'openstreetmap';
   let lastWeatherUpdate = 0;
@@ -644,6 +645,14 @@
     document.getElementById('start-btn').disabled = true;
     document.getElementById('stop-btn').disabled = false;
     document.getElementById('flight-status').textContent = 'Статус: В полёте';
+
+    // Инициализация пути дрона, если он ещё не создан
+    if (!dronePaths[droneIdToMonitor]) {
+      dronePaths[droneIdToMonitor] = {
+        points: [],
+        path: null
+      };
+    }
 
     monitoringInterval = setInterval(async () => {
       const data = await fetchDroneData(droneIdToMonitor);
@@ -1207,6 +1216,9 @@
     for (let droneId in droneMarkers) {
       if (droneMarkers[droneId]) droneMarkers[droneId].addTo(map);
     }
+    for (let droneId in dronePaths) {
+      if (dronePaths[droneId].path) dronePaths[droneId].path.addTo(map);
+    }
     if (currentRoutePath) currentRoutePath.addTo(map);
     savedRoutes.forEach(route => route.polyline.addTo(map));
 
@@ -1363,6 +1375,7 @@
     document.getElementById('latitude').textContent = `Широта: ${latitude.toFixed(6)}`;
     document.getElementById('longitude').textContent = `Долгота: ${longitude.toFixed(6)}`;
 
+    // Обновление маркера дрона
     if (droneMarkers[droneId]) {
       droneMarkers[droneId].setLatLng([latitude, longitude]);
     } else {
@@ -1370,6 +1383,19 @@
               .bindPopup(`Дрон: ${droneId}`)
               .addTo(map);
     }
+
+    // Добавление точки в путь дрона
+    dronePaths[droneId].points.push([latitude, longitude]);
+
+    // Обновление линии пути
+    if (dronePaths[droneId].path) {
+      map.removeLayer(dronePaths[droneId].path);
+    }
+    dronePaths[droneId].path = L.polyline(dronePaths[droneId].points, {
+      color: '#ffcc00', // Жёлтый цвет для пути дрона
+      weight: 3,
+      opacity: 0.8
+    }).addTo(map);
 
     let inNoFlyZone = false;
     if (noFlyZone && isPointInPolygon([latitude, longitude], noFlyPoints)) {
