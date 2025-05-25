@@ -56,6 +56,9 @@
     .sidebar li:nth-child(4)::before { content: '🚫'; } /* Настройка запретной зоны */
     .sidebar li:nth-child(5)::before { content: '📡'; } /* Мониторинг */
     .sidebar li:nth-child(6)::before { content: '🔔'; } /* Оповещения */
+    .sidebar li:nth-child(7)::before { content: '📋'; } /* Просмотр дронов */
+    .sidebar li:nth-child(8)::before { content: '📋'; } /* Просмотр пилотов */
+    .sidebar li:nth-child(9)::before { content: '📋'; } /* Просмотр зон */
     .sidebar form { display: none; margin-top: 15px; }
     .sidebar form.active { display: block; }
     .sidebar input, .sidebar select, .sidebar button {
@@ -75,6 +78,14 @@
     }
     .sidebar button:hover {
       background: #009ba6;
+    }
+    .list-item {
+      padding: 8px 10px;
+      border-bottom: 1px solid #00c4cc;
+      cursor: default;
+    }
+    .list-item:hover {
+      background: #2d3a42;
     }
     .top-bar {
       position: absolute;
@@ -156,6 +167,9 @@
     <li onclick="showForm('no-fly-zone-form')">Настройка запретной зоны</li>
     <li onclick="startMonitoring()">Мониторинг</li>
     <li id="alerts">Оповещения: Нет</li>
+    <li onclick="showForm('drone-list')">Просмотр дронов</li>
+    <li onclick="showForm('pilot-list')">Просмотр пилотов</li>
+    <li onclick="showForm('no-fly-list')">Просмотр зон</li>
   </ul>
   <form id="drone-form">
     <h3>Регистрация дрона</h3>
@@ -195,7 +209,20 @@
     <div id="no-fly-points">
       <p>Нажмите на карту для добавления точек запретной зоны.</p>
     </div>
+    <button type="button" onclick="saveNoFlyZone()">Сохранить зону</button>
     <button type="button" onclick="clearNoFlyZone()">Очистить зону</button>
+  </form>
+  <form id="drone-list">
+    <h3>Зарегистрированные дроны</h3>
+    <div id="drone-list-items"></div>
+  </form>
+  <form id="pilot-list">
+    <h3>Зарегистрированные пилоты</h3>
+    <div id="pilot-list-items"></div>
+  </form>
+  <form id="no-fly-list">
+    <h3>Сохранённые запретные зоны</h3>
+    <div id="no-fly-list-items"></div>
   </form>
 </div>
 <div class="top-bar" id="weather-bar">
@@ -215,6 +242,12 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
+  // Загрузка данных из localStorage при старте
+  let drones = JSON.parse(localStorage.getItem('drones')) || [];
+  let pilots = JSON.parse(localStorage.getItem('pilots')) || [];
+  let noFlyZones = JSON.parse(localStorage.getItem('noFlyZones')) || [];
+  let savedNoFlyPolygons = []; // Массив для хранения полигонов на карте
+
   const map = L.map('map', {
     zoomControl: false,
     zoom: 10,
@@ -251,6 +284,19 @@
   let currentLayer = 'openstreetmap';
 
   document.getElementById('osm-btn').classList.add('active');
+
+  // Рендеринг сохранённых зон при загрузке
+  function renderSavedNoFlyZones() {
+    savedNoFlyPolygons.forEach(polygon => map.removeLayer(polygon));
+    savedNoFlyPolygons = noFlyZones.map(zone =>
+            L.polygon(zone.points, {
+              color: '#ff0000',
+              fillColor: '#ff0000',
+              fillOpacity: 0.2,
+              id: zone.id
+            }).addTo(map)
+    );
+  }
 
   map.on('click', function(e) {
     const latlng = e.latlng;
@@ -306,6 +352,9 @@
     });
     const form = document.getElementById(formId);
     if (form) form.classList.add('active');
+    if (formId === 'drone-list') updateDroneList();
+    if (formId === 'pilot-list') updatePilotList();
+    if (formId === 'no-fly-list') updateNoFlyList();
     routePoints.length = 0;
     routeMarkers.forEach(marker => map.removeLayer(marker));
     routeMarkers = [];
@@ -319,7 +368,13 @@
     const model = document.getElementById('drone-model').value;
     const serial = document.getElementById('drone-serial').value;
     if (brand && model && serial) {
+      const drone = { brand, model, serial };
+      drones.push(drone);
+      localStorage.setItem('drones', JSON.stringify(drones));
       alert(`Дрон зарегистрирован: ${brand} ${model}, серийный номер: ${serial}`);
+      document.getElementById('drone-brand').value = '';
+      document.getElementById('drone-model').value = '';
+      document.getElementById('drone-serial').value = '';
     } else {
       alert('Заполните все поля!');
     }
@@ -329,7 +384,12 @@
     const name = document.getElementById('pilot-name').value;
     const contact = document.getElementById('pilot-contact').value;
     if (name && contact) {
+      const pilot = { name, contact };
+      pilots.push(pilot);
+      localStorage.setItem('pilots', JSON.stringify(pilots));
       alert(`Пилот зарегистрирован: ${name}, контакт: ${contact}`);
+      document.getElementById('pilot-name').value = '';
+      document.getElementById('pilot-contact').value = '';
     } else {
       alert('Заполните все поля!');
     }
@@ -341,7 +401,7 @@
     const maxAltitude = document.getElementById('flight-max-altitude').value;
     const droneWeight = document.getElementById('drone-weight').value;
     const droneModel = document.getElementById('drone-model').value;
-    const directVisibility = document.getElementById('direct-visibility').checked;
+    const directVisibility = document.getElementById('direct-visibility').checked ? 1 : 0;
 
     if (routePoints.length < 2) {
       alert('Добавьте хотя бы две точки маршрута!');
@@ -349,6 +409,8 @@
     }
 
     let inNoFlyZone = false;
+
+    // Проверка текущей запретной зоны (если она есть)
     if (noFlyZone) {
       routePoints.forEach(point => {
         if (isPointInPolygon(point, noFlyPoints)) {
@@ -357,12 +419,41 @@
       });
     }
 
-    const status = inNoFlyZone ? 'отклонено' : 'одобрено';
+    // Проверка всех сохранённых запретных зон
+    noFlyZones.forEach(zone => {
+      routePoints.forEach(point => {
+        if (isPointInPolygon(point, zone.points)) {
+          inNoFlyZone = true;
+        }
+      });
+    });
+
+    const status = inNoFlyZone ? 'отклонено (маршрут пересекает запретную зону)' : 'одобрено';
     document.getElementById('request-status').textContent = `Статус: ${status}`;
+    routePoints.length = 0;
+    routeMarkers.forEach(marker => map.removeLayer(marker));
+    routeMarkers = [];
+    if (routePath) map.removeLayer(routePath);
+    const routePointsDiv = document.getElementById('route-points');
+    if (routePointsDiv) routePointsDiv.innerHTML = '<p>Нажмите на карту для добавления точек маршрута.</p>';
   }
 
   function briefing() {
     alert('Брифинг: Проверка данных перед полётом. Все параметры в норме.');
+  }
+
+  function saveNoFlyZone() {
+    if (noFlyPoints.length >= 3) {
+      const zone = { points: [...noFlyPoints], id: Date.now() };
+      noFlyZones.push(zone);
+      localStorage.setItem('noFlyZones', JSON.stringify(noFlyZones));
+      renderSavedNoFlyZones(); // Рендеринг новой зоны на карте
+      updateNoFlyList();
+      alert('Запретная зона сохранена!');
+      clearNoFlyZone();
+    } else {
+      alert('Добавьте минимум 3 точки для сохранения зоны!');
+    }
   }
 
   function clearNoFlyZone() {
@@ -377,6 +468,39 @@
     if (noFlyPointsDiv) noFlyPointsDiv.innerHTML = '<p>Нажмите на карту для добавления точек запретной зоны.</p>';
   }
 
+  function updateDroneList() {
+    const list = document.getElementById('drone-list-items');
+    list.innerHTML = '';
+    drones.forEach(drone => {
+      const item = document.createElement('div');
+      item.className = 'list-item';
+      item.textContent = `${drone.brand} ${drone.model}, Серийный номер: ${drone.serial}`;
+      list.appendChild(item);
+    });
+  }
+
+  function updatePilotList() {
+    const list = document.getElementById('pilot-list-items');
+    list.innerHTML = '';
+    pilots.forEach(pilot => {
+      const item = document.createElement('div');
+      item.className = 'list-item';
+      item.textContent = `${pilot.name}, Контакт: ${pilot.contact}`;
+      list.appendChild(item);
+    });
+  }
+
+  function updateNoFlyList() {
+    const list = document.getElementById('no-fly-list-items');
+    list.innerHTML = '';
+    noFlyZones.forEach(zone => {
+      const item = document.createElement('div');
+      item.className = 'list-item';
+      item.textContent = `Зона #${zone.id}: ${zone.points.length} точек`;
+      list.appendChild(item);
+    });
+  }
+
   function changeMapLayer(layer) {
     if (currentLayer === layer) return;
 
@@ -389,12 +513,18 @@
     if (activeButton) activeButton.classList.add('active');
 
     map.eachLayer(function (layer) {
-      map.removeLayer(layer);
+      // Удаляем только слои карты (TileLayer), оставляя маркеры, полигоны и линии
+      if (layer instanceof L.TileLayer) {
+        map.removeLayer(layer);
+      }
     });
+
     if (layer === 'openstreetmap') osmLayer.addTo(map);
     else if (layer === 'opentopomap') topoLayer.addTo(map);
     else if (layer === 'stamen-terrain') terrainLayer.addTo(map);
 
+    // Добавление сохранённых зон на новый слой
+    renderSavedNoFlyZones();
     if (noFlyZone) noFlyZone.addTo(map);
     noFlyMarkers.forEach(marker => marker.addTo(map));
     if (routePath) routePath.addTo(map);
@@ -451,6 +581,11 @@
           inNoFlyZone = true;
         }
       }
+      noFlyZones.forEach(zone => {
+        if (isPointInPolygon(routePoints[currentIndex], zone.points)) {
+          inNoFlyZone = true;
+        }
+      });
 
       if (inNoFlyZone) {
         document.getElementById('alerts').textContent = 'Оповещения: Вход в запретную зону!';
@@ -480,6 +615,7 @@
     }
   }
   fetchWeather();
+  renderSavedNoFlyZones(); // Рендеринг зон при загрузке
 
   function toDMS(coord, isLat) {
     const deg = Math.floor(coord);
